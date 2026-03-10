@@ -1,0 +1,70 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper: check if user is authenticated
+    function isAuth() {
+      return request.auth != null;
+    }
+
+    // Helper: get user role from their profile document
+    function getUserRole() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
+    }
+
+    // Helper: check if user has a specific role
+    function hasRole(role) {
+      return isAuth() && getUserRole() == role;
+    }
+
+    // Users collection
+    match /users/{userId} {
+      allow read: if isAuth();
+      allow create: if isAuth() && request.auth.uid == userId;
+      allow update: if isAuth() && (request.auth.uid == userId || hasRole('admin'));
+      allow delete: if hasRole('admin');
+    }
+
+    // Tests collection
+    match /tests/{testId} {
+      allow read: if isAuth();
+      allow create: if isAuth() && (hasRole('instructor') || hasRole('admin'));
+      allow update, delete: if isAuth() && (
+        resource.data.createdBy == request.auth.uid || hasRole('admin')
+      );
+    }
+
+    // Questions collection (top-level)
+    match /questions/{questionId} {
+      allow read: if isAuth();
+      allow create, update, delete: if isAuth() && (hasRole('instructor') || hasRole('admin'));
+    }
+
+    // Submissions collection
+    match /submissions/{submissionId} {
+      allow read: if isAuth() && (
+        resource.data.userId == request.auth.uid ||
+        hasRole('instructor') ||
+        hasRole('admin')
+      );
+      allow create: if isAuth();
+      allow update: if isAuth() && (
+        resource.data.userId == request.auth.uid || hasRole('admin')
+      );
+      allow delete: if hasRole('admin');
+    }
+
+    // Categories collection
+    match /categories/{categoryId} {
+      allow read: if isAuth();
+      allow create, update, delete: if hasRole('admin');
+    }
+
+    // Topics collection
+    match /topics/{topicId} {
+      allow read: if isAuth();
+      allow create, update, delete: if hasRole('admin');
+    }
+  }
+}
