@@ -12,10 +12,13 @@ import {
 import { motion as m } from 'framer-motion';
 import { collection, query, where, getDocs, orderBy, limit } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
+import { getCachedOrFetch } from '@/lib/dataCache';
 import { useAuth } from '@/contexts/AuthContext';
 import DashboardLayout from '@/components/DashboardLayout';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import { useRouter } from 'next/navigation';
+
+const TESTS_CACHE_TTL = 60 * 1000;
 
 interface TestItem {
   id: string;
@@ -53,10 +56,13 @@ export default function StudentDashboard() {
     if (!user) return;
     const load = async () => {
       try {
-        const testsSnap = await getDocs(query(collection(db, 'tests'), orderBy('createdAt', 'desc'), limit(6)));
-        const testList: TestItem[] = [];
-        testsSnap.forEach(doc => {
-          testList.push({ id: doc.id, ...doc.data() } as TestItem);
+        const testList = await getCachedOrFetch('dashboard_tests_latest_6', TESTS_CACHE_TTL, async () => {
+          const testsSnap = await getDocs(query(collection(db, 'tests'), orderBy('createdAt', 'desc'), limit(6)));
+          const tests: TestItem[] = [];
+          testsSnap.forEach(doc => {
+            tests.push({ id: doc.id, ...doc.data() } as TestItem);
+          });
+          return tests;
         });
         setTests(testList);
 

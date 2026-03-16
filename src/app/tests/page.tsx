@@ -19,6 +19,7 @@ import {
   type QueryDocumentSnapshot,
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
+import { getCachedOrFetch } from '@/lib/dataCache';
 import DashboardLayout from '@/components/DashboardLayout';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import { useRouter } from 'next/navigation';
@@ -43,6 +44,7 @@ interface CategoryItem {
 const container = { hidden: {}, show: { transition: { staggerChildren: 0.06 } } };
 const item = { hidden: { opacity: 0, y: 20 }, show: { opacity: 1, y: 0 } };
 const TESTS_PAGE_SIZE = 60;
+const CATEGORY_CACHE_TTL = 10 * 60 * 1000;
 
 export default function TestsPage() {
   const router = useRouter();
@@ -59,19 +61,22 @@ export default function TestsPage() {
     const load = async () => {
       try {
         const testsQ = query(collection(db, 'tests'), orderBy('createdAt', 'desc'), limit(TESTS_PAGE_SIZE));
-        const [testsSnap, catsSnap] = await Promise.all([
+        const [testsSnap, catList] = await Promise.all([
           getDocs(testsQ),
-          getDocs(collection(db, 'categories')),
+          getCachedOrFetch('categories_all', CATEGORY_CACHE_TTL, async () => {
+            const catsSnap = await getDocs(collection(db, 'categories'));
+            const cats: CategoryItem[] = [];
+            catsSnap.forEach(doc => cats.push({ id: doc.id, ...doc.data() } as CategoryItem));
+            return cats;
+          }),
         ]);
+
         const testList: TestItem[] = [];
         testsSnap.forEach(doc => testList.push({ id: doc.id, ...doc.data() } as TestItem));
         setTests(testList);
         const docs = testsSnap.docs;
         setCursor(docs.length > 0 ? docs[docs.length - 1] : null);
         setHasMore(docs.length === TESTS_PAGE_SIZE);
-
-        const catList: CategoryItem[] = [];
-        catsSnap.forEach(doc => catList.push({ id: doc.id, ...doc.data() } as CategoryItem));
         setCategories(catList);
       } catch (err) {
         console.error('Error loading tests:', err);

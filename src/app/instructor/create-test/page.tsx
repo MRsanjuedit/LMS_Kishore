@@ -14,10 +14,14 @@ import {
   collection, addDoc, getDocs, serverTimestamp, writeBatch, doc,
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
+import { getCachedOrFetch } from '@/lib/dataCache';
 import { useAuth } from '@/contexts/AuthContext';
 import DashboardLayout from '@/components/DashboardLayout';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import toast from 'react-hot-toast';
+
+const CATEGORY_CACHE_TTL = 10 * 60 * 1000;
+const TOPIC_CACHE_TTL = 10 * 60 * 1000;
 
 interface QuestionInput {
   questionText: string;
@@ -72,16 +76,21 @@ export default function CreateTestPage() {
 
   useEffect(() => {
     const load = async () => {
-      const [catsSnap, topicsSnap] = await Promise.all([
-        getDocs(collection(db, 'categories')),
-        getDocs(collection(db, 'topics')),
+      const [cats, tops] = await Promise.all([
+        getCachedOrFetch('categories_all', CATEGORY_CACHE_TTL, async () => {
+          const catsSnap = await getDocs(collection(db, 'categories'));
+          const categoryList: CategoryItem[] = [];
+          catsSnap.forEach(d => categoryList.push({ id: d.id, ...d.data() } as CategoryItem));
+          return categoryList;
+        }),
+        getCachedOrFetch('topics_all', TOPIC_CACHE_TTL, async () => {
+          const topicsSnap = await getDocs(collection(db, 'topics'));
+          const topicList: TopicItem[] = [];
+          topicsSnap.forEach(d => topicList.push({ id: d.id, ...d.data() } as TopicItem));
+          return topicList;
+        }),
       ]);
-      const cats: CategoryItem[] = [];
-      catsSnap.forEach(d => cats.push({ id: d.id, ...d.data() } as CategoryItem));
       setCategories(cats);
-
-      const tops: TopicItem[] = [];
-      topicsSnap.forEach(d => tops.push({ id: d.id, ...d.data() } as TopicItem));
       setTopics(tops);
     };
     load();
