@@ -38,10 +38,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const fetchProfile = useCallback(async (uid: string) => {
-    const snap = await getDoc(doc(db, 'users', uid));
-    if (snap.exists()) {
-      setProfile(snap.data() as UserProfile);
+  const fetchProfile = useCallback(async (firebaseUser: User) => {
+    const fallbackProfile: UserProfile = {
+      uid: firebaseUser.uid,
+      name: firebaseUser.displayName || 'User',
+      email: firebaseUser.email || '',
+      role: 'student',
+    };
+
+    try {
+      const userRef = doc(db, 'users', firebaseUser.uid);
+      const snap = await getDoc(userRef);
+      if (snap.exists()) {
+        setProfile(snap.data() as UserProfile);
+        return;
+      }
+
+      await setDoc(userRef, {
+        ...fallbackProfile,
+        createdAt: serverTimestamp(),
+      }, { merge: true });
+      setProfile(fallbackProfile);
+    } catch (err) {
+      console.error('Failed to fetch user profile, using fallback profile:', err);
+      setProfile(fallbackProfile);
     }
   }, []);
 
@@ -49,7 +69,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const unsub = onAuthStateChanged(auth, async (u) => {
       setUser(u);
       if (u) {
-        await fetchProfile(u.uid);
+        await fetchProfile(u);
       } else {
         setProfile(null);
       }
@@ -60,7 +80,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signIn = async (email: string, password: string) => {
     const cred = await signInWithEmailAndPassword(auth, email, password);
-    await fetchProfile(cred.user.uid);
+    await fetchProfile(cred.user);
   };
 
   const signUp = async (email: string, password: string, name: string, role: UserRole) => {

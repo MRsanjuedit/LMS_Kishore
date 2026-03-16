@@ -74,6 +74,18 @@ Open [http://localhost:3000](http://localhost:3000).
 npx vercel
 ```
 
+Set these environment variables in Vercel Project Settings → Environment Variables:
+
+- `NEXT_PUBLIC_FIREBASE_API_KEY`
+- `NEXT_PUBLIC_FIREBASE_PROJECT_ID`
+- `NEXT_PUBLIC_FIREBASE_APP_ID`
+- `NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID`
+- `NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN` (optional, defaults to `${NEXT_PUBLIC_FIREBASE_PROJECT_ID}.firebaseapp.com`)
+- `NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET` (optional, defaults to `${NEXT_PUBLIC_FIREBASE_PROJECT_ID}.appspot.com`)
+- `GROQ_API_KEY` (if using AI routes)
+
+If these are missing, login may succeed but profile reads from Firestore can fail in production.
+
 **Cloud Functions** — Deploy to Firebase:
 
 ```bash
