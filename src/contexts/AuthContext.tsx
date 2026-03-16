@@ -32,6 +32,27 @@ interface AuthContextType {
 }
 
 const AuthContext = createContext<AuthContextType>({} as AuthContextType);
+const PROFILE_CACHE_PREFIX = 'edutech_profile_';
+
+const getCachedProfile = (uid: string): UserProfile | null => {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = localStorage.getItem(`${PROFILE_CACHE_PREFIX}${uid}`);
+    if (!raw) return null;
+    return JSON.parse(raw) as UserProfile;
+  } catch {
+    return null;
+  }
+};
+
+const setCachedProfile = (profile: UserProfile) => {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(`${PROFILE_CACHE_PREFIX}${profile.uid}`, JSON.stringify(profile));
+  } catch {
+    return;
+  }
+};
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
@@ -50,7 +71,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const userRef = doc(db, 'users', firebaseUser.uid);
       const snap = await getDoc(userRef);
       if (snap.exists()) {
-        setProfile(snap.data() as UserProfile);
+        const serverProfile = snap.data() as UserProfile;
+        setProfile(serverProfile);
+        setCachedProfile(serverProfile);
         return;
       }
 
@@ -59,17 +82,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         createdAt: serverTimestamp(),
       }, { merge: true });
       setProfile(fallbackProfile);
+      setCachedProfile(fallbackProfile);
     } catch (err) {
       console.error('Failed to fetch user profile, using fallback profile:', err);
       setProfile(fallbackProfile);
+      setCachedProfile(fallbackProfile);
     }
   }, []);
 
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, async (u) => {
+    const unsub = onAuthStateChanged(auth, (u) => {
       setUser(u);
       if (u) {
-        await fetchProfile(u);
+        const cachedProfile = getCachedProfile(u.uid);
+        if (cachedProfile) {
+          setProfile(cachedProfile);
+        }
+        void fetchProfile(u);
       } else {
         setProfile(null);
       }
