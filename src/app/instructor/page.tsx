@@ -6,12 +6,20 @@ import {
 } from '@mui/material';
 import { Add, Quiz, People, Analytics, ArrowForward } from '@mui/icons-material';
 import { motion as m } from 'framer-motion';
-import { collection, query, where, getDocs } from 'firebase/firestore';
+import { collection, query, where, getDocs, getCountFromServer, orderBy, limit } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/contexts/AuthContext';
 import DashboardLayout from '@/components/DashboardLayout';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import { useRouter } from 'next/navigation';
+
+const chunkArray = <T,>(items: T[], chunkSize: number): T[][] => {
+  const chunks: T[][] = [];
+  for (let i = 0; i < items.length; i += chunkSize) {
+    chunks.push(items.slice(i, i + chunkSize));
+  }
+  return chunks;
+};
 
 export default function InstructorDashboard() {
   const { user } = useAuth();
@@ -24,8 +32,10 @@ export default function InstructorDashboard() {
     if (!user) return;
     const load = async () => {
       try {
+        const testsBaseQuery = query(collection(db, 'tests'), where('createdBy', '==', user.uid));
+        const testsCountSnap = await getCountFromServer(testsBaseQuery);
         const testsSnap = await getDocs(
-          query(collection(db, 'tests'), where('createdBy', '==', user.uid))
+          query(testsBaseQuery, orderBy('createdAt', 'desc'), limit(100))
         );
         const testIds: string[] = [];
         const testList: Array<{ id: string; title: string; questionCount: number }> = [];
@@ -35,17 +45,25 @@ export default function InstructorDashboard() {
         });
         setRecentTests(testList.slice(0, 5));
 
-        let totalQuestions = 0;
-        let totalSubmissions = 0;
-
-        for (const tid of testIds.slice(0, 10)) {
-          const qSnap = await getDocs(query(collection(db, 'questions'), where('testId', '==', tid)));
-          totalQuestions += qSnap.size;
-          const sSnap = await getDocs(query(collection(db, 'submissions'), where('testId', '==', tid)));
-          totalSubmissions += sSnap.size;
+        const totalQuestions = testList.reduce((sum, test) => sum + (test.questionCount || 0), 0);
+        let submissionsCount = 0;
+        const subsCountSnap = await getCountFromServer(
+          query(collection(db, 'submissions'), where('instructorId', '==', user.uid))
+        );
+        submissionsCount = subsCountSnap.data().count;
+        if (submissionsCount === 0 && testIds.length > 0) {
+          const idChunks = chunkArray(testIds, 10);
+          let legacyCount = 0;
+          for (const ids of idChunks) {
+            const chunkCountSnap = await getCountFromServer(
+              query(collection(db, 'submissions'), where('testId', 'in', ids))
+            );
+            legacyCount += chunkCountSnap.data().count;
+          }
+          submissionsCount = legacyCount;
         }
 
-        setStats({ tests: testIds.length, questions: totalQuestions, submissions: totalSubmissions });
+        setStats({ tests: testsCountSnap.data().count, questions: totalQuestions, submissions: submissionsCount });
       } catch (err) {
         console.error('Error:', err);
       }

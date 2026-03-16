@@ -8,7 +8,7 @@ import {
 } from '@mui/material';
 import { Psychology, TrendingDown, Lightbulb, Refresh } from '@mui/icons-material';
 import { motion as m } from 'framer-motion';
-import { collection, query, where, getDocs, orderBy } from 'firebase/firestore';
+import { collection, query, where, getDocs, orderBy, limit } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/contexts/AuthContext';
 import DashboardLayout from '@/components/DashboardLayout';
@@ -35,7 +35,12 @@ export default function AIInsightsPage() {
     const check = async () => {
       try {
         const snap = await getDocs(
-          query(collection(db, 'submissions'), where('userId', '==', user.uid), orderBy('createdAt', 'desc'))
+          query(
+            collection(db, 'submissions'),
+            where('userId', '==', user.uid),
+            orderBy('createdAt', 'desc'),
+            limit(50)
+          )
         );
         const subs: Array<{ testTitle: string; score: number; total: number; accuracy: number }> = [];
         snap.forEach(d => {
@@ -82,11 +87,13 @@ export default function AIInsightsPage() {
   return (
     <ProtectedRoute allowedRoles={['student']}>
       <DashboardLayout>
-        <Box>
-          <Typography variant="h4" sx={{ mb: 1 }}>AI Insights</Typography>
-          <Typography color="text.secondary" sx={{ mb: 3 }}>
-            AI-powered analysis of your test performance and personalized recommendations
-          </Typography>
+        <Box sx={{ maxWidth: 1080, mx: 'auto' }}>
+          <Box sx={{ mb: 3 }}>
+            <Typography variant="h4" sx={{ fontWeight: 700 }}>AI Insights</Typography>
+            <Typography color="text.secondary" sx={{ mt: 0.5 }}>
+              AI-powered analysis of your performance with personalized recommendations.
+            </Typography>
+          </Box>
 
           {dataLoading ? (
             <Skeleton variant="rounded" height={300} />
@@ -103,8 +110,8 @@ export default function AIInsightsPage() {
             <>
               {!insight && (
                 <m.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-                  <Card sx={{ textAlign: 'center', py: 6 }}>
-                    <CardContent>
+                  <Card sx={{ textAlign: 'center', py: { xs: 3, sm: 6 } }}>
+                    <CardContent sx={{ px: { xs: 2, sm: 3 } }}>
                       <Psychology sx={{ fontSize: 80, color: 'primary.main', mb: 2 }} />
                       <Typography variant="h6" sx={{ mb: 2 }}>
                         Ready to analyze your performance
@@ -138,7 +145,7 @@ export default function AIInsightsPage() {
                     {/* Summary */}
                     <Grid size={{ xs: 12 }}>
                       <Card sx={{ background: 'linear-gradient(135deg, #6C63FF10, #FF658410)' }}>
-                        <CardContent sx={{ p: 3 }}>
+                        <CardContent sx={{ p: { xs: 2, sm: 3 } }}>
                           <Typography variant="h6" sx={{ mb: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
                             <Lightbulb color="primary" /> Performance Summary
                           </Typography>
@@ -150,7 +157,7 @@ export default function AIInsightsPage() {
                     {/* Weak Topics */}
                     <Grid size={{ xs: 12, md: 6 }}>
                       <Card sx={{ height: '100%' }}>
-                        <CardContent>
+                        <CardContent sx={{ p: { xs: 2, sm: 3 } }}>
                           <Typography variant="h6" sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
                             <TrendingDown color="error" /> Weak Areas
                           </Typography>
@@ -166,7 +173,7 @@ export default function AIInsightsPage() {
                     {/* Recommendations */}
                     <Grid size={{ xs: 12, md: 6 }}>
                       <Card sx={{ height: '100%' }}>
-                        <CardContent>
+                        <CardContent sx={{ p: { xs: 2, sm: 3 } }}>
                           <Typography variant="h6" sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
                             <Lightbulb color="warning" /> Recommendations
                           </Typography>

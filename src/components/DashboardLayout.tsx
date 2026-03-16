@@ -21,7 +21,6 @@ import {
   useTheme,
   Chip,
   InputBase,
-  Badge,
 } from '@mui/material';
 import {
   Menu as MenuIcon,
@@ -35,7 +34,6 @@ import {
   Person,
   Psychology,
   Search,
-  Notifications,
   Settings,
   NoteAdd,
   Assignment,
@@ -54,6 +52,8 @@ const studentNav = [
   { label: 'My Results', path: '/results', icon: <Analytics /> },
   { label: 'Analytics', path: '/analytics', icon: <Analytics /> },
   { label: 'AI Insights', path: '/ai-insights', icon: <Psychology /> },
+  { label: 'Profile', path: '/profile', icon: <Person /> },
+  { label: 'Settings', path: '/settings', icon: <Settings /> },
 ];
 
 const instructorNav = [
@@ -62,6 +62,8 @@ const instructorNav = [
   { label: 'My Tests', path: '/instructor/tests', icon: <Assignment /> },
   { label: 'Student Analytics', path: '/instructor/analytics', icon: <Leaderboard />, section: 'Analysis' },
   { label: 'AI Reports', path: '/instructor/ai-reports', icon: <AutoAwesome /> },
+  { label: 'Profile', path: '/profile', icon: <Person />, section: 'Account' },
+  { label: 'Settings', path: '/settings', icon: <Settings /> },
 ];
 
 const adminNav = [
@@ -69,6 +71,8 @@ const adminNav = [
   { label: 'Users', path: '/admin/users', icon: <People /> },
   { label: 'Categories', path: '/admin/categories', icon: <Category /> },
   { label: 'Analytics', path: '/admin/analytics', icon: <Analytics /> },
+  { label: 'Profile', path: '/profile', icon: <Person /> },
+  { label: 'Settings', path: '/settings', icon: <Settings /> },
 ];
 
 const roleColors: Record<string, string> = {
@@ -277,14 +281,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
             <Box sx={{ flex: 1 }} />
 
-            <IconButton sx={{ color: '#666' }}>
-              <Badge variant="dot" color="error">
-                <Notifications sx={{ fontSize: 22 }} />
-              </Badge>
-            </IconButton>
-            <IconButton sx={{ color: '#666' }}>
-              <Settings sx={{ fontSize: 22 }} />
-            </IconButton>
             <Divider orientation="vertical" sx={{ height: 28, mx: 1 }} />
             <IconButton onClick={(e) => setAnchorEl(e.currentTarget)} sx={{ p: 0.5 }}>
               <Avatar sx={{ width: 36, height: 36, bgcolor: roleColor, fontSize: 14, fontWeight: 700 }}>
@@ -304,10 +300,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 <Typography color="text.secondary" fontSize={12}>{profile?.email}</Typography>
               </Box>
               <Divider />
-              <MenuItem onClick={() => { setAnchorEl(null); }} sx={{ py: 1.5, gap: 1.5 }}>
+              <MenuItem onClick={() => { setAnchorEl(null); router.push('/profile'); }} sx={{ py: 1.5, gap: 1.5 }}>
                 <Person sx={{ fontSize: 20, color: '#666' }} /> Profile
               </MenuItem>
-              <MenuItem onClick={() => { setAnchorEl(null); }} sx={{ py: 1.5, gap: 1.5 }}>
+              <MenuItem onClick={() => { setAnchorEl(null); router.push('/settings'); }} sx={{ py: 1.5, gap: 1.5 }}>
                 <Settings sx={{ fontSize: 20, color: '#666' }} /> Settings
               </MenuItem>
               <Divider />

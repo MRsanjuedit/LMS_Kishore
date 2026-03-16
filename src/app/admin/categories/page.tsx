@@ -58,7 +58,11 @@ export default function AdminCategoriesPage() {
     setLoading(false);
   };
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    Promise.resolve().then(() => {
+      load();
+    });
+  }, []);
 
   const handleAddCategory = async () => {
     if (!newCatName.trim()) return;

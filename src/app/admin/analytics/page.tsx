@@ -10,7 +10,15 @@ import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid,
   Tooltip, PieChart, Pie, Cell, Legend, LineChart, Line,
 } from 'recharts';
-import { collection, getDocs } from 'firebase/firestore';
+import {
+  collection,
+  getDocs,
+  getCountFromServer,
+  query,
+  where,
+  orderBy,
+  limit,
+} from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import DashboardLayout from '@/components/DashboardLayout';
 import ProtectedRoute from '@/components/ProtectedRoute';
@@ -26,25 +34,26 @@ export default function AdminAnalyticsPage() {
   useEffect(() => {
     const load = async () => {
       try {
-        const [usersSnap, testsSnap, subsSnap, catsSnap] = await Promise.all([
-          getDocs(collection(db, 'users')),
-          getDocs(collection(db, 'tests')),
-          getDocs(collection(db, 'submissions')),
+        const [usersCountSnap, testsCountSnap, submissionsCountSnap, catsSnap, recentSubsSnap, studentCountSnap, instructorCountSnap, adminCountSnap] = await Promise.all([
+          getCountFromServer(collection(db, 'users')),
+          getCountFromServer(collection(db, 'tests')),
+          getCountFromServer(collection(db, 'submissions')),
           getDocs(collection(db, 'categories')),
+          getDocs(query(collection(db, 'submissions'), orderBy('createdAt', 'desc'), limit(500))),
+          getCountFromServer(query(collection(db, 'users'), where('role', '==', 'student'))),
+          getCountFromServer(query(collection(db, 'users'), where('role', '==', 'instructor'))),
+          getCountFromServer(query(collection(db, 'users'), where('role', '==', 'admin'))),
         ]);
 
-        // User roles distribution
-        const roles: Record<string, number> = {};
-        usersSnap.forEach(d => {
-          const r = d.data().role || 'student';
-          roles[r] = (roles[r] || 0) + 1;
-        });
-        setUserRoles(Object.entries(roles).map(([name, value]) => ({ name, value })));
+        setUserRoles([
+          { name: 'student', value: studentCountSnap.data().count },
+          { name: 'instructor', value: instructorCountSnap.data().count },
+          { name: 'admin', value: adminCountSnap.data().count },
+        ].filter(x => x.value > 0));
 
-        // Submissions and scores
+        // Recent score sample for dashboard average (bounded for scale)
         let totalAccuracy = 0;
-        const subsByCat: Record<string, number> = {};
-        subsSnap.forEach(d => {
+        recentSubsSnap.forEach(d => {
           totalAccuracy += d.data().accuracy || 0;
         });
 
@@ -52,22 +61,21 @@ export default function AdminAnalyticsPage() {
         const catMap: Record<string, string> = {};
         catsSnap.forEach(d => { catMap[d.id] = d.data().name; });
 
-        const testsByCat: Record<string, number> = {};
-        testsSnap.forEach(d => {
-          const catId = d.data().categoryId;
-          const catName = catMap[catId] || 'Other';
-          testsByCat[catName] = (testsByCat[catName] || 0) + 1;
-        });
-
-        setCategoryStats(Object.entries(testsByCat).map(([name, tests]) => ({
-          name, tests, submissions: 0,
-        })));
+        const categoryCounts = await Promise.all(
+          Object.entries(catMap).map(async ([catId, name]) => {
+            const countSnap = await getCountFromServer(
+              query(collection(db, 'tests'), where('categoryId', '==', catId))
+            );
+            return { name, tests: countSnap.data().count, submissions: 0 };
+          })
+        );
+        setCategoryStats(categoryCounts.filter(c => c.tests > 0));
 
         setStats({
-          users: usersSnap.size,
-          tests: testsSnap.size,
-          submissions: subsSnap.size,
-          avgScore: subsSnap.size > 0 ? Math.round(totalAccuracy / subsSnap.size) : 0,
+          users: usersCountSnap.data().count,
+          tests: testsCountSnap.data().count,
+          submissions: submissionsCountSnap.data().count,
+          avgScore: recentSubsSnap.size > 0 ? Math.round(totalAccuracy / recentSubsSnap.size) : 0,
         });
       } catch (err) {
         console.error('Error:', err);

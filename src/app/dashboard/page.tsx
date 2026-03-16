@@ -7,7 +7,7 @@ import {
 } from '@mui/material';
 import {
   Quiz, TrendingUp, EmojiEvents, Timer, ArrowForward,
-  PlayArrow, CalendarToday, Speed, AutoAwesome,
+  PlayArrow, CalendarToday, Speed,
 } from '@mui/icons-material';
 import { motion as m } from 'framer-motion';
 import { collection, query, where, getDocs, orderBy, limit } from 'firebase/firestore';
@@ -53,12 +53,12 @@ export default function StudentDashboard() {
     if (!user) return;
     const load = async () => {
       try {
-        const testsSnap = await getDocs(collection(db, 'tests'));
+        const testsSnap = await getDocs(query(collection(db, 'tests'), orderBy('createdAt', 'desc'), limit(6)));
         const testList: TestItem[] = [];
         testsSnap.forEach(doc => {
           testList.push({ id: doc.id, ...doc.data() } as TestItem);
         });
-        setTests(testList.slice(0, 6));
+        setTests(testList);
 
         const resultsQ = query(
           collection(db, 'submissions'),
@@ -126,14 +126,6 @@ export default function StudentDashboard() {
       gradient: 'linear-gradient(135deg, #F59E0B, #FBBF24)',
       shadowColor: 'rgba(245, 158, 11, 0.3)',
       bgLight: '#FEF3C7',
-    },
-    {
-      label: 'Study Streak',
-      value: `${Math.min(stats.totalTests, 7)}d`,
-      icon: <AutoAwesome sx={{ fontSize: 28 }} />,
-      gradient: 'linear-gradient(135deg, #EC4899, #F472B6)',
-      shadowColor: 'rgba(236, 72, 153, 0.3)',
-      bgLight: '#FCE7F3',
     },
   ];
 

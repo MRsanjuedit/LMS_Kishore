@@ -3,16 +3,17 @@
 import { useEffect, useState } from 'react';
 import {
   Box, Typography, Card, CardContent, Grid, Button,
-  CircularProgress, Chip, LinearProgress, Divider,
-  FormControl, InputLabel, Select, MenuItem, Alert, Skeleton,
+  CircularProgress, Chip, LinearProgress,
+  FormControl, InputLabel, Select, MenuItem, Alert,
+  Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper,
 } from '@mui/material';
 import {
   Assessment, TrendingUp, TrendingDown, People,
-  CheckCircle, Warning, Psychology, EmojiEvents,
+  CheckCircle, Psychology, EmojiEvents,
   School, Lightbulb,
 } from '@mui/icons-material';
 import { motion as m } from 'framer-motion';
-import { collection, query, where, getDocs } from 'firebase/firestore';
+import { collection, query, where, getDocs, documentId } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/contexts/AuthContext';
 import DashboardLayout from '@/components/DashboardLayout';
@@ -46,6 +47,82 @@ interface AIReport {
   keyInsights: string[];
 }
 
+interface StudentRow {
+  userId: string;
+  name: string;
+  email: string;
+  attempts: number;
+  averageAccuracy: number;
+  bestAccuracy: number;
+  latestAccuracy: number;
+  latestScore: number;
+  latestTotal: number;
+  lastSubmittedAt?: number;
+}
+
+interface StudentReportItem {
+  userId: string;
+  name: string;
+  summary: string;
+  strengths: string[];
+  improvements: string[];
+  recommendation: string;
+}
+
+interface SubmissionRecord {
+  id: string;
+  userId?: string;
+  score?: number;
+  total?: number;
+  accuracy?: number;
+  createdAt?: { toMillis?: () => number; toDate?: () => Date };
+}
+
+const PASS_THRESHOLD = 50;
+
+function chunkArray<T>(input: T[], size: number): T[][] {
+  const output: T[][] = [];
+  for (let i = 0; i < input.length; i += size) {
+    output.push(input.slice(i, i + size));
+  }
+  return output;
+}
+
+function buildStudentReport(row: StudentRow): StudentReportItem {
+  const progressDelta = row.latestAccuracy - row.averageAccuracy;
+  const trendLabel = progressDelta >= 5 ? 'improving' : progressDelta <= -5 ? 'declining' : 'steady';
+  const passState = row.averageAccuracy >= PASS_THRESHOLD ? 'meeting expected performance' : 'below expected performance';
+
+  const strengths: string[] = [];
+  const improvements: string[] = [];
+
+  if (row.bestAccuracy >= 80) strengths.push('Shows strong high-score potential on at least one attempt');
+  if (row.attempts >= 2) strengths.push('Demonstrates persistence through repeated attempts');
+  if (row.latestAccuracy >= row.averageAccuracy) strengths.push('Recent attempt is aligned with or above average performance');
+
+  if (row.averageAccuracy < 60) improvements.push('Needs stronger concept revision to improve baseline accuracy');
+  if (row.latestAccuracy < row.averageAccuracy) improvements.push('Recent score dropped below average and needs quick review');
+  if (row.attempts === 1) improvements.push('Only one attempt recorded; more attempts would improve confidence in trend');
+
+  if (strengths.length === 0) strengths.push('Participated and submitted attempts for this test');
+  if (improvements.length === 0) improvements.push('Can target faster completion while maintaining accuracy');
+
+  const recommendation = row.averageAccuracy < 60
+    ? 'Assign remedial practice on weak concepts and schedule a re-attempt after guided revision.'
+    : row.averageAccuracy < 80
+    ? 'Provide mixed-difficulty practice and focus on reducing avoidable errors.'
+    : 'Provide advanced challenge questions and timed practice to maintain high performance.';
+
+  return {
+    userId: row.userId,
+    name: row.name,
+    summary: `${row.name} is ${passState} with an average accuracy of ${row.averageAccuracy}% across ${row.attempts} attempt${row.attempts > 1 ? 's' : ''}. Recent performance is ${trendLabel} (latest ${row.latestAccuracy}%).`,
+    strengths,
+    improvements,
+    recommendation,
+  };
+}
+
 export default function AIReportsPage() {
   const { user } = useAuth();
   const [tests, setTests] = useState<TestOption[]>([]);
@@ -54,6 +131,8 @@ export default function AIReportsPage() {
   const [generating, setGenerating] = useState(false);
   const [report, setReport] = useState<AIReport | null>(null);
   const [testMeta, setTestMeta] = useState<{ questionCount: number; submissionCount: number } | null>(null);
+  const [studentRows, setStudentRows] = useState<StudentRow[]>([]);
+  const [studentReports, setStudentReports] = useState<StudentReportItem[]>([]);
 
   useEffect(() => {
     const loadTests = async () => {
@@ -73,6 +152,61 @@ export default function AIReportsPage() {
     loadTests();
   }, [user]);
 
+  const buildPerStudentData = async (submissions: SubmissionRecord[]) => {
+    const validSubs = submissions.filter((s) => !!s.userId);
+    const userIds = Array.from(new Set(validSubs.map((s) => s.userId as string)));
+
+    const usersMap: Record<string, { name: string; email: string }> = {};
+    const idChunks = chunkArray(userIds, 10);
+    for (const idChunk of idChunks) {
+      const usersSnap = await getDocs(query(collection(db, 'users'), where(documentId(), 'in', idChunk)));
+      usersSnap.forEach((docSnap) => {
+        const data = docSnap.data() as { name?: string; email?: string };
+        usersMap[docSnap.id] = {
+          name: data.name || 'Student',
+          email: data.email || 'N/A',
+        };
+      });
+    }
+
+    const grouped: Record<string, SubmissionRecord[]> = {};
+    validSubs.forEach((submission) => {
+      const key = submission.userId as string;
+      if (!grouped[key]) grouped[key] = [];
+      grouped[key].push(submission);
+    });
+
+    const rows: StudentRow[] = Object.entries(grouped).map(([uid, items]) => {
+      const sorted = [...items].sort((a, b) => {
+        const aTime = a.createdAt?.toMillis?.() || 0;
+        const bTime = b.createdAt?.toMillis?.() || 0;
+        return bTime - aTime;
+      });
+      const latest = sorted[0];
+      const accuracies = sorted.map((s) => s.accuracy || 0);
+      const bestAccuracy = accuracies.length > 0 ? Math.max(...accuracies) : 0;
+      const averageAccuracy = accuracies.length > 0
+        ? Math.round(accuracies.reduce((sum, val) => sum + val, 0) / accuracies.length)
+        : 0;
+
+      return {
+        userId: uid,
+        name: usersMap[uid]?.name || 'Student',
+        email: usersMap[uid]?.email || 'N/A',
+        attempts: sorted.length,
+        averageAccuracy,
+        bestAccuracy,
+        latestAccuracy: latest?.accuracy || 0,
+        latestScore: latest?.score || 0,
+        latestTotal: latest?.total || 0,
+        lastSubmittedAt: latest?.createdAt?.toMillis?.() || 0,
+      };
+    }).sort((a, b) => (b.lastSubmittedAt || 0) - (a.lastSubmittedAt || 0));
+
+    setStudentRows(rows);
+    setStudentReports(rows.map(buildStudentReport));
+  };
+
   const handleGenerate = async () => {
     if (!selectedTest) {
       toast.error('Please select a test');
@@ -80,6 +214,8 @@ export default function AIReportsPage() {
     }
     setGenerating(true);
     setReport(null);
+    setStudentRows([]);
+    setStudentReports([]);
     try {
       const test = tests.find(t => t.id === selectedTest);
 
@@ -92,7 +228,7 @@ export default function AIReportsPage() {
       const sSnap = await getDocs(
         query(collection(db, 'submissions'), where('testId', '==', selectedTest))
       );
-      const submissions: Array<Record<string, unknown>> = [];
+      const submissions: SubmissionRecord[] = [];
       sSnap.forEach(d => submissions.push({ id: d.id, ...d.data() }));
 
       setTestMeta({ questionCount: questions.length, submissionCount: submissions.length });
@@ -102,6 +238,8 @@ export default function AIReportsPage() {
         setGenerating(false);
         return;
       }
+
+      await buildPerStudentData(submissions);
 
       const res = await fetch('/api/ai-report', {
         method: 'POST',
@@ -394,6 +532,90 @@ export default function AIReportsPage() {
                       <Typography variant="body2" sx={{ lineHeight: 1.7 }}>{rec}</Typography>
                     </Box>
                   ))}
+                </CardContent>
+              </Card>
+
+              {/* Student Data Table */}
+              <Card sx={{ mb: 3, borderRadius: 3 }}>
+                <CardContent sx={{ p: 3 }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+                    <People sx={{ color: '#6C63FF' }} />
+                    <Typography variant="h6" fontWeight={700}>Per-Student Performance Table</Typography>
+                  </Box>
+                  <TableContainer component={Paper} variant="outlined" sx={{ borderRadius: 2 }}>
+                    <Table size="small">
+                      <TableHead>
+                        <TableRow>
+                          <TableCell>Student</TableCell>
+                          <TableCell>Email</TableCell>
+                          <TableCell align="right">Attempts</TableCell>
+                          <TableCell align="right">Avg %</TableCell>
+                          <TableCell align="right">Best %</TableCell>
+                          <TableCell align="right">Latest Score</TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {studentRows.map((row) => (
+                          <TableRow key={row.userId} hover>
+                            <TableCell>{row.name}</TableCell>
+                            <TableCell sx={{ color: 'text.secondary' }}>{row.email}</TableCell>
+                            <TableCell align="right">{row.attempts}</TableCell>
+                            <TableCell align="right">
+                              <Chip
+                                label={`${row.averageAccuracy}%`}
+                                size="small"
+                                color={row.averageAccuracy >= 80 ? 'success' : row.averageAccuracy >= 50 ? 'warning' : 'error'}
+                              />
+                            </TableCell>
+                            <TableCell align="right">{row.bestAccuracy}%</TableCell>
+                            <TableCell align="right">{row.latestScore}/{row.latestTotal}</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                </CardContent>
+              </Card>
+
+              {/* Per Student Reports */}
+              <Card sx={{ mb: 3, borderRadius: 3 }}>
+                <CardContent sx={{ p: 3 }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+                    <Psychology sx={{ color: '#6C63FF' }} />
+                    <Typography variant="h6" fontWeight={700}>Student-wise Reports</Typography>
+                  </Box>
+                  <Grid container spacing={2}>
+                    {studentReports.map((student) => (
+                      <Grid key={student.userId} size={{ xs: 12 }}>
+                        <Card variant="outlined" sx={{ borderRadius: 2 }}>
+                          <CardContent>
+                            <Typography variant="h6" fontWeight={700} sx={{ mb: 1 }}>{student.name}</Typography>
+                            <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
+                              {student.summary}
+                            </Typography>
+
+                            <Typography variant="subtitle2" fontWeight={700}>Strengths</Typography>
+                            {student.strengths.map((strength, idx) => (
+                              <Typography key={idx} variant="body2" sx={{ mt: 0.5 }}>
+                                • {strength}
+                              </Typography>
+                            ))}
+
+                            <Typography variant="subtitle2" fontWeight={700} sx={{ mt: 1.5 }}>Improvement Areas</Typography>
+                            {student.improvements.map((point, idx) => (
+                              <Typography key={idx} variant="body2" sx={{ mt: 0.5 }}>
+                                • {point}
+                              </Typography>
+                            ))}
+
+                            <Alert severity="info" sx={{ mt: 1.5, borderRadius: 2 }}>
+                              {student.recommendation}
+                            </Alert>
+                          </CardContent>
+                        </Card>
+                      </Grid>
+                    ))}
+                  </Grid>
                 </CardContent>
               </Card>
             </m.div>

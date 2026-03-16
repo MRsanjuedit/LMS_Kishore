@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   Box, Typography, Card, CardContent, Grid, Chip, Button,
   IconButton, Table, TableBody, TableCell, TableContainer,
@@ -34,7 +34,7 @@ export default function InstructorTestsPage() {
   const [loading, setLoading] = useState(true);
   const [deleteId, setDeleteId] = useState<string | null>(null);
 
-  const load = async () => {
+  const load = useCallback(async () => {
     if (!user) return;
     try {
       const snap = await getDocs(
@@ -55,9 +55,13 @@ export default function InstructorTestsPage() {
       console.error('Error:', err);
     }
     setLoading(false);
-  };
+  }, [user]);
 
-  useEffect(() => { load(); }, [user]);
+  useEffect(() => {
+    Promise.resolve().then(() => {
+      load();
+    });
+  }, [load]);
 
   const handleDelete = async () => {
     if (!deleteId) return;

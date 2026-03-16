@@ -1,13 +1,8 @@
 import * as functions from "firebase-functions";
 import * as admin from "firebase-admin";
 import { GoogleGenerativeAI } from "@google/generative-ai";
-import * as path from "path";
 
-// Initialize with service account credentials
-const serviceAccount = require(path.resolve(__dirname, "../../hema-satya-foods-firebase-adminsdk-fbsvc-ef66ebb2cc.json"));
-admin.initializeApp({
-  credential: admin.credential.cert(serviceAccount),
-});
+admin.initializeApp();
 const db = admin.firestore();
 
 // Initialize Gemini AI - API key stored in Firebase config
@@ -55,15 +50,21 @@ export const evaluateTest = functions.https.onCall(async (request) => {
 
   const accuracy = total > 0 ? Math.round((score / total) * 100) : 0;
 
-  // Get test title
+  // Get test metadata
   const testDoc = await db.collection("tests").doc(testId).get();
-  const testTitle = testDoc.exists ? testDoc.data()?.title || "" : "";
+  const testData = testDoc.exists ? testDoc.data() : null;
+  const testTitle = testData?.title || "";
 
   // Store submission
   const submission = {
     userId,
     testId,
     testTitle,
+    instructorId: testData?.createdBy || "",
+    categoryId: testData?.categoryId || "",
+    categoryName: testData?.categoryName || "",
+    topicId: testData?.topicId || "",
+    topicName: testData?.topicName || "",
     answers,
     score,
     total,

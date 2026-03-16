@@ -10,11 +10,19 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell, Legend,
 } from 'recharts';
-import { collection, query, where, getDocs } from 'firebase/firestore';
+import { collection, query, where, getDocs, limit } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/contexts/AuthContext';
 import DashboardLayout from '@/components/DashboardLayout';
 import ProtectedRoute from '@/components/ProtectedRoute';
+
+const chunkArray = <T,>(items: T[], chunkSize: number): T[][] => {
+  const chunks: T[][] = [];
+  for (let i = 0; i < items.length; i += chunkSize) {
+    chunks.push(items.slice(i, i + chunkSize));
+  }
+  return chunks;
+};
 
 export default function InstructorAnalyticsPage() {
   const { user } = useAuth();
@@ -33,15 +41,32 @@ export default function InstructorAnalyticsPage() {
         const testMap: Record<string, string> = {};
         testsSnap.forEach(d => { testMap[d.id] = d.data().title; });
 
-        let allSubs: Array<{ testId: string; accuracy: number }> = [];
-        for (const tid of Object.keys(testMap)) {
-          const sSnap = await getDocs(
-            query(collection(db, 'submissions'), where('testId', '==', tid))
-          );
-          sSnap.forEach(d => {
-            allSubs.push({ testId: tid, accuracy: d.data().accuracy || 0 });
-          });
+        const allSubs: Array<{ testId: string; accuracy: number }> = [];
+        const subsSnap = await getDocs(
+          query(
+            collection(db, 'submissions'),
+            where('instructorId', '==', user.uid),
+            limit(2000)
+          )
+        );
+        if (subsSnap.empty && Object.keys(testMap).length > 0) {
+          const idChunks = chunkArray(Object.keys(testMap), 10);
+          const fallbackSubs: Array<{ testId: string; accuracy: number }> = [];
+          for (const ids of idChunks) {
+            const legacySnap = await getDocs(
+              query(collection(db, 'submissions'), where('testId', 'in', ids))
+            );
+            legacySnap.forEach((docSnap) => {
+              const data = docSnap.data();
+              fallbackSubs.push({ testId: data.testId, accuracy: data.accuracy || 0 });
+            });
+          }
+          fallbackSubs.forEach((s) => allSubs.push(s));
         }
+        subsSnap.forEach(d => {
+          const data = d.data();
+          allSubs.push({ testId: data.testId, accuracy: data.accuracy || 0 });
+        });
 
         // Per-test performance
         const perf: Record<string, { total: number; count: number }> = {};

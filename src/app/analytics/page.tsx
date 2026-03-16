@@ -10,7 +10,7 @@ import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, BarChart, Bar, PieChart, Pie, Cell, Legend,
 } from 'recharts';
-import { collection, query, where, getDocs, orderBy } from 'firebase/firestore';
+import { collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/contexts/AuthContext';
 import DashboardLayout from '@/components/DashboardLayout';
@@ -41,8 +41,7 @@ export default function AnalyticsPage() {
         const snap = await getDocs(
           query(
             collection(db, 'submissions'),
-            where('userId', '==', user.uid),
-            orderBy('createdAt', 'asc')
+            where('userId', '==', user.uid)
           )
         );
 
@@ -65,6 +64,12 @@ export default function AnalyticsPage() {
             topicName: dd.topicName,
             categoryName: dd.categoryName,
           });
+        });
+
+        submissions.sort((a, b) => {
+          const aTime = a.createdAt?.getTime() ?? 0;
+          const bTime = b.createdAt?.getTime() ?? 0;
+          return aTime - bTime;
         });
 
         // Score history
@@ -144,7 +149,13 @@ export default function AnalyticsPage() {
     return (
       <ProtectedRoute allowedRoles={['student']}>
         <DashboardLayout>
-          <Typography variant="h4" sx={{ mb: 3 }}>Analytics</Typography>
+          <Box sx={{ maxWidth: 1080, mx: 'auto' }}>
+            <Box sx={{ mb: 3 }}>
+              <Typography variant="h4" sx={{ fontWeight: 700 }}>Analytics</Typography>
+              <Typography color="text.secondary" sx={{ mt: 0.5 }}>
+                Track your learning trends, strengths, and areas to improve.
+              </Typography>
+            </Box>
           <Grid container spacing={3}>
             {[1,2,3,4].map(i => (
               <Grid size={{ xs: 12, sm: 6, md: 3 }} key={i}>
@@ -153,6 +164,7 @@ export default function AnalyticsPage() {
             ))}
             <Grid size={{ xs: 12 }}><Skeleton variant="rounded" height={300} /></Grid>
           </Grid>
+          </Box>
         </DashboardLayout>
       </ProtectedRoute>
     );
@@ -162,7 +174,7 @@ export default function AnalyticsPage() {
     return (
       <ProtectedRoute allowedRoles={['student']}>
         <DashboardLayout>
-          <Box sx={{ textAlign: 'center', py: 10 }}>
+          <Box sx={{ maxWidth: 1080, mx: 'auto', textAlign: 'center', py: 10 }}>
             <Quiz sx={{ fontSize: 80, color: 'text.disabled' }} />
             <Typography variant="h5" color="text.secondary" sx={{ mt: 2 }}>No analytics yet</Typography>
             <Typography color="text.secondary">Take some tests to see your performance analytics</Typography>
@@ -186,7 +198,13 @@ export default function AnalyticsPage() {
   return (
     <ProtectedRoute allowedRoles={['student']}>
       <DashboardLayout>
-        <Typography variant="h4" sx={{ mb: 3 }}>Analytics</Typography>
+        <Box sx={{ maxWidth: 1080, mx: 'auto' }}>
+        <Box sx={{ mb: 3 }}>
+          <Typography variant="h4" sx={{ fontWeight: 700 }}>Analytics</Typography>
+          <Typography color="text.secondary" sx={{ mt: 0.5 }}>
+            Track your learning trends, strengths, and areas to improve.
+          </Typography>
+        </Box>
 
         <m.div variants={container} initial="hidden" animate="show">
           {/* Stats Cards */}
@@ -296,6 +314,7 @@ export default function AnalyticsPage() {
             </Grid>
           </Grid>
         </m.div>
+        </Box>
       </DashboardLayout>
     </ProtectedRoute>
   );

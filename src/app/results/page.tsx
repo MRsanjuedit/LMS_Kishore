@@ -146,14 +146,19 @@ function ResultsContent() {
   }
 
   return (
-    <Box>
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 3 }}>
-        <Button startIcon={<ArrowBack />} onClick={() => router.push('/dashboard')}>
+    <Box sx={{ maxWidth: 1080, mx: 'auto' }}>
+      <Box sx={{ display: 'flex', alignItems: { xs: 'flex-start', sm: 'center' }, flexDirection: { xs: 'column', sm: 'row' }, gap: 1.5, mb: 3 }}>
+        <Button startIcon={<ArrowBack />} onClick={() => router.push('/dashboard')} sx={{ px: 0.5 }}>
           Back
         </Button>
-        <Typography variant="h4">
-          {testId ? 'Test Results' : 'My Results'}
-        </Typography>
+        <Box>
+          <Typography variant="h4" sx={{ fontWeight: 700 }}>
+            {testId ? 'Test Results' : 'My Results'}
+          </Typography>
+          <Typography color="text.secondary" sx={{ mt: 0.5 }}>
+            Review your attempts, understand mistakes, and improve with AI explanations.
+          </Typography>
+        </Box>
       </Box>
 
       {/* Latest result summary */}
@@ -223,14 +228,16 @@ function ResultsContent() {
                       <Box sx={{ flex: 1 }}>
                         <Typography fontWeight={600}>Q{i + 1}. {q.questionText}</Typography>
                         <Box sx={{ mt: 1, display: 'flex', gap: 2, flexWrap: 'wrap' }}>
-                          <Typography variant="body2">
-                            Your answer: <Chip label={userAnswer || 'Skipped'} size="small"
+                          <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 1 }}>
+                            <Typography variant="body2">Your answer:</Typography>
+                            <Chip label={userAnswer || 'Skipped'} size="small"
                               color={isCorrect ? 'success' : 'error'} />
-                          </Typography>
+                          </Box>
                           {!isCorrect && (
-                            <Typography variant="body2">
-                              Correct: <Chip label={q.correctAnswer} size="small" color="success" />
-                            </Typography>
+                            <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 1 }}>
+                              <Typography variant="body2">Correct:</Typography>
+                              <Chip label={q.correctAnswer} size="small" color="success" />
+                            </Box>
                           )}
                         </Box>
                       </Box>
