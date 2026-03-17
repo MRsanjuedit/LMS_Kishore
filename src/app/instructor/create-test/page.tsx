@@ -7,8 +7,11 @@ import {
   FormControl, InputLabel, Select, MenuItem, Grid, Stepper,
   Step, StepLabel, IconButton, Chip, Divider, Alert,
   RadioGroup, FormControlLabel, Radio, Autocomplete,
+  Dialog, DialogTitle, DialogContent, DialogActions,
+  Tabs, Tab, Accordion, AccordionSummary, AccordionDetails,
+  Paper,
 } from '@mui/material';
-import { Add, Delete, Save, ArrowBack, ArrowForward } from '@mui/icons-material';
+import { Add, Delete, Save, ArrowBack, ArrowForward, Visibility, ContentPaste, ExpandMore, CheckCircle } from '@mui/icons-material';
 import { motion as m } from 'framer-motion';
 import {
   collection, addDoc, getDocs, serverTimestamp, writeBatch, doc,
@@ -56,6 +59,113 @@ const emptyQuestion: QuestionInput = {
 
 const steps = ['Test Details', 'Add Questions', 'Review & Submit'];
 
+// ---------------------------------------------------------------------------
+// MDX-style format guide (shown as placeholder / example)
+// ---------------------------------------------------------------------------
+const MDX_FORMAT_GUIDE = `---
+title: My Test Title
+category: Mathematics
+topic: Algebra
+duration: 30
+description: Optional description here
+---
+
+## What is 2 + 2?
+- [ ] 1
+- [ ] 3
+- [x] 4
+- [ ] 5
+difficulty: Easy
+explanation: Two plus two equals four.
+
+## Is the sky blue?
+type: true_false
+answer: True
+difficulty: Easy
+
+## What is the chemical formula for water?
+type: short_answer
+answer: H2O
+difficulty: Medium
+explanation: Water is dihydrogen monoxide.`;
+
+// ---------------------------------------------------------------------------
+// MDX Parser — converts pasted text into test state
+// ---------------------------------------------------------------------------
+function parseMDX(text: string): {
+  title: string; category: string; topic: string;
+  duration: number; description: string; questions: QuestionInput[];
+} | { error: string } {
+  try {
+    // --- frontmatter ---
+    const fmMatch = text.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+    let title = '', category = '', topic = '', duration = 30, description = '';
+    if (fmMatch) {
+      const fm = fmMatch[1];
+      title       = fm.match(/title:\s*(.+)/)?.[1]?.trim() ?? '';
+      category    = fm.match(/category:\s*(.+)/)?.[1]?.trim() ?? '';
+      topic       = fm.match(/topic:\s*(.+)/)?.[1]?.trim() ?? '';
+      duration    = parseInt(fm.match(/duration:\s*(\d+)/)?.[1] ?? '30', 10);
+      description = fm.match(/description:\s*(.+)/)?.[1]?.trim() ?? '';
+    }
+
+    // --- body: split on ## headers ---
+    const body = fmMatch ? text.slice(fmMatch[0].length).trim() : text.trim();
+    const blocks = body.split(/\n(?=##\s)/m).map(b => b.trim()).filter(b => b.startsWith('## '));
+
+    if (blocks.length === 0) {
+      return { error: 'No questions found. Each question must start with "## " (double hash + space).' };
+    }
+
+    const questions: QuestionInput[] = [];
+
+    for (const block of blocks) {
+      const lines = block.split('\n').map(l => l.trim()).filter(Boolean);
+      const questionText = lines[0].replace(/^##\s+/, '').trim();
+      if (!questionText) continue;
+
+      const typeRaw  = lines.find(l => /^type:\s*/i.test(l))?.replace(/^type:\s*/i, '').trim();
+      const diffRaw  = lines.find(l => /^difficulty:\s*/i.test(l))?.replace(/^difficulty:\s*/i, '').trim();
+      const explRaw  = lines.find(l => /^explanation:\s*/i.test(l))?.replace(/^explanation:\s*/i, '').trim() ?? '';
+      const answerRaw = lines.find(l => /^answer:\s*/i.test(l))?.replace(/^answer:\s*/i, '').trim() ?? '';
+
+      const difficulty: QuestionInput['difficulty'] =
+        diffRaw === 'Easy' || diffRaw === 'Hard' ? diffRaw : 'Medium';
+
+      const optionLines = lines.filter(l => /^-\s*\[.\]/.test(l));
+      const allOptions  = optionLines.map(l => l.replace(/^-\s*\[.\]\s*/, '').trim());
+      const correctFromCheckbox = optionLines
+        .find(l => /^-\s*\[x\]/i.test(l))
+        ?.replace(/^-\s*\[x\]\s*/i, '').trim() ?? '';
+
+      if (typeRaw === 'true_false') {
+        const ca = answerRaw === 'True' || answerRaw === 'False' ? answerRaw : 'True';
+        questions.push({ questionText, type: 'true_false', options: ['True', 'False'], correctAnswer: ca, difficulty, explanation: explRaw });
+      } else if (typeRaw === 'short_answer') {
+        questions.push({ questionText, type: 'short_answer', options: [], correctAnswer: answerRaw, difficulty, explanation: explRaw });
+      } else if (typeRaw === 'paragraph') {
+        questions.push({ questionText, type: 'paragraph', options: [], correctAnswer: answerRaw, difficulty, explanation: explRaw });
+      } else {
+        // MCQ (default)
+        if (allOptions.length < 2) {
+          return { error: `"${questionText.slice(0, 50)}" needs at least 2 options marked with - [ ] or - [x].` };
+        }
+        const correctAnswer = correctFromCheckbox || answerRaw;
+        if (!correctAnswer) {
+          return { error: `"${questionText.slice(0, 50)}" has no correct answer. Mark one option with - [x].` };
+        }
+        const padded = [...allOptions, '', '', '', ''].slice(0, Math.max(4, allOptions.length));
+        questions.push({ questionText, type: 'mcq', options: padded, correctAnswer, difficulty, explanation: explRaw });
+      }
+    }
+
+    if (questions.length === 0) return { error: 'No valid questions parsed.' };
+    return { title, category, topic, duration, description, questions };
+  } catch {
+    return { error: 'Failed to parse. Please check the syntax and try again.' };
+  }
+}
+
 export default function CreateTestPage() {
   const { user } = useAuth();
   const router = useRouter();
@@ -63,6 +173,14 @@ export default function CreateTestPage() {
   const [categories, setCategories] = useState<CategoryItem[]>([]);
   const [topics, setTopics] = useState<TopicItem[]>([]);
   const [saving, setSaving] = useState(false);
+
+  // Quick-Paste mode
+  const [inputMode, setInputMode] = useState<'manual' | 'paste'>('manual');
+  const [pasteText, setPasteText] = useState('');
+  const [parseError, setParseError] = useState('');
+
+  // Preview dialog
+  const [previewOpen, setPreviewOpen] = useState(false);
 
   // Test details
   const [title, setTitle] = useState('');
@@ -124,6 +242,32 @@ export default function CreateTestPage() {
   const removeQuestion = (index: number) => {
     if (questions.length <= 1) return;
     setQuestions(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const handleParseAndLoad = () => {
+    setParseError('');
+    if (!pasteText.trim()) {
+      setParseError('Please paste your test content first.');
+      return;
+    }
+    const result = parseMDX(pasteText);
+    if ('error' in result) {
+      setParseError(result.error);
+      return;
+    }
+    setTitle(result.title);
+    setCategoryName(result.category);
+    const matchCat = categories.find(c => c.name.toLowerCase() === result.category.toLowerCase());
+    setCategoryId(matchCat?.id || '');
+    setTopicName(result.topic);
+    const matchTop = topics.find(t => t.name.toLowerCase() === result.topic.toLowerCase());
+    setTopicId(matchTop?.id || '');
+    setDuration(result.duration);
+    setDescription(result.description);
+    setQuestions(result.questions);
+    toast.success(`Loaded ${result.questions.length} question${result.questions.length !== 1 ? 's' : ''} successfully!`);
+    setInputMode('manual');
+    setActiveStep(1);
   };
 
   const validateForPublish = (): boolean => {
@@ -225,223 +369,467 @@ export default function CreateTestPage() {
     <ProtectedRoute allowedRoles={['instructor']}>
       <DashboardLayout>
         <Box sx={{ maxWidth: 900, mx: 'auto' }}>
-          <Typography variant="h4" sx={{ mb: 3 }}>Create Test</Typography>
 
-          <Stepper activeStep={activeStep} sx={{ mb: 4 }}>
-            {steps.map(label => (
-              <Step key={label}><StepLabel>{label}</StepLabel></Step>
-            ))}
-          </Stepper>
+          {/* ── Header + mode toggle ── */}
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3, flexWrap: 'wrap', gap: 1 }}>
+            <Typography variant="h4">Create Test</Typography>
+            <Tabs
+              value={inputMode}
+              onChange={(_, v) => { setInputMode(v); setParseError(''); }}
+              sx={{ minHeight: 36, '& .MuiTab-root': { minHeight: 36, py: 0 } }}
+            >
+              <Tab value="manual" label="Manual Entry" />
+              <Tab
+                value="paste"
+                label="Quick Paste"
+                icon={<ContentPaste fontSize="small" />}
+                iconPosition="start"
+              />
+            </Tabs>
+          </Box>
 
-          <m.div key={activeStep} initial={{ opacity: 0, x: 30 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.3 }}>
-            {/* Step 1: Test Details */}
-            {activeStep === 0 && (
-              <Card>
+          {/* ══════════════════════════════════════════════
+              QUICK PASTE MODE — notepad-style MDX editor
+          ══════════════════════════════════════════════ */}
+          {inputMode === 'paste' && (
+            <m.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.25 }}>
+              <Card sx={{ mb: 3 }}>
                 <CardContent sx={{ p: 3 }}>
-                  <Typography variant="h6" sx={{ mb: 2 }}>Test Details</Typography>
-                  <Grid container spacing={2}>
-                    <Grid size={{ xs: 12 }}>
-                      <TextField fullWidth label="Test Title" value={title} onChange={e => setTitle(e.target.value)} required />
-                    </Grid>
-                    <Grid size={{ xs: 12, sm: 6 }}>
-                      <Autocomplete
-                        freeSolo
-                        options={categories.map(c => c.name)}
-                        value={categoryName}
-                        onInputChange={(_, val) => {
-                          setCategoryName(val);
-                          const match = categories.find(c => c.name === val);
-                          setCategoryId(match?.id || '');
-                          setTopicName('');
-                          setTopicId('');
-                        }}
-                        renderInput={(params) => <TextField {...params} label="Category" placeholder="Type or select a category" />}
-                      />
-                    </Grid>
-                    <Grid size={{ xs: 12, sm: 6 }}>
-                      <Autocomplete
-                        freeSolo
-                        options={categoryId ? filteredTopics.map(t => t.name) : topics.map(t => t.name)}
-                        value={topicName}
-                        onInputChange={(_, val) => {
-                          setTopicName(val);
-                          const match = topics.find(t => t.name === val);
-                          setTopicId(match?.id || '');
-                        }}
-                        renderInput={(params) => <TextField {...params} label="Topic" placeholder="Type or select a topic" />}
-                      />
-                    </Grid>
-                    <Grid size={{ xs: 12, sm: 6 }}>
-                      <TextField fullWidth type="number" label="Duration (minutes)" value={duration}
-                        onChange={e => setDuration(Number(e.target.value))} inputProps={{ min: 1 }} />
-                    </Grid>
-                    <Grid size={{ xs: 12, sm: 6 }}>
-                      <FormControl fullWidth>
-                        <InputLabel>Status</InputLabel>
-                        <Select value={status} label="Status" onChange={e => setStatus(e.target.value as TestStatus)}>
-                          <MenuItem value="published">Published (Visible to students)</MenuItem>
-                          <MenuItem value="draft">Draft (Instructor only)</MenuItem>
-                        </Select>
-                      </FormControl>
-                    </Grid>
-                    <Grid size={{ xs: 12 }}>
-                      <TextField fullWidth multiline rows={3} label="Description (optional)" value={description}
-                        onChange={e => setDescription(e.target.value)} />
-                    </Grid>
-                  </Grid>
+                  <Typography variant="h6" sx={{ mb: 0.5 }}>Paste Your Test (MDX Format)</Typography>
+                  <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                    Write or paste your test below using the simple MDX format. Click <strong>Parse &amp; Load</strong> to import all questions at once.
+                  </Typography>
+
+                  <TextField
+                    fullWidth
+                    multiline
+                    rows={20}
+                    value={pasteText}
+                    onChange={e => { setPasteText(e.target.value); setParseError(''); }}
+                    placeholder={MDX_FORMAT_GUIDE}
+                    inputProps={{
+                      style: {
+                        fontFamily: '"Fira Code", "Cascadia Code", "Courier New", monospace',
+                        fontSize: '13px',
+                        lineHeight: '1.7',
+                      },
+                    }}
+                    sx={{
+                      mb: 2,
+                      '& .MuiOutlinedInput-root': { bgcolor: '#1a1b26' },
+                      '& textarea': { color: '#c0caf5' },
+                      '& textarea::placeholder': { color: '#565f89', opacity: 1 },
+                    }}
+                  />
+
+                  {parseError && <Alert severity="error" sx={{ mb: 2 }}>{parseError}</Alert>}
+
+                  <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+                    <Button
+                      variant="contained"
+                      onClick={handleParseAndLoad}
+                      sx={{ background: 'linear-gradient(135deg, #6C63FF, #8B85FF)' }}
+                    >
+                      Parse &amp; Load
+                    </Button>
+                    <Button variant="outlined" onClick={() => setPasteText(MDX_FORMAT_GUIDE)}>
+                      Load Example
+                    </Button>
+                    {pasteText && (
+                      <Button color="error" onClick={() => { setPasteText(''); setParseError(''); }}>
+                        Clear
+                      </Button>
+                    )}
+                  </Box>
+
+                  {/* Format guide accordion */}
+                  <Accordion sx={{ mt: 3 }} disableGutters elevation={0} variant="outlined">
+                    <AccordionSummary expandIcon={<ExpandMore />}>
+                      <Typography variant="body2" fontWeight={600}>Format Reference</Typography>
+                    </AccordionSummary>
+                    <AccordionDetails sx={{ p: 2 }}>
+                      <Box sx={{ display: 'grid', gap: 2 }}>
+
+                        <Alert severity="info" icon={false}>
+                          <Typography variant="body2" fontWeight={700} gutterBottom>Frontmatter (optional — place at the very top)</Typography>
+                          <Box component="pre" sx={{ fontFamily: 'monospace', fontSize: 12, m: 0, whiteSpace: 'pre-wrap' }}>
+{`---
+title: My Test Title
+category: Mathematics
+topic: Algebra
+duration: 30
+description: A short description
+---`}
+                          </Box>
+                        </Alert>
+
+                        <Alert severity="success" icon={false}>
+                          <Typography variant="body2" fontWeight={700} gutterBottom>MCQ Question (default type)</Typography>
+                          <Box component="pre" sx={{ fontFamily: 'monospace', fontSize: 12, m: 0, whiteSpace: 'pre-wrap' }}>
+{`## What is 2 + 2?
+- [ ] 1
+- [ ] 3
+- [x] 4    ← correct answer (use [x])
+- [ ] 5
+difficulty: Easy
+explanation: Two plus two is four.`}
+                          </Box>
+                        </Alert>
+
+                        <Alert severity="warning" icon={false}>
+                          <Typography variant="body2" fontWeight={700} gutterBottom>True / False Question</Typography>
+                          <Box component="pre" sx={{ fontFamily: 'monospace', fontSize: 12, m: 0, whiteSpace: 'pre-wrap' }}>
+{`## Is the Earth flat?
+type: true_false
+answer: False
+difficulty: Easy`}
+                          </Box>
+                        </Alert>
+
+                        <Alert severity="warning" icon={false}>
+                          <Typography variant="body2" fontWeight={700} gutterBottom>Short Answer</Typography>
+                          <Box component="pre" sx={{ fontFamily: 'monospace', fontSize: 12, m: 0, whiteSpace: 'pre-wrap' }}>
+{`## What is the chemical formula for water?
+type: short_answer
+answer: H2O
+difficulty: Medium`}
+                          </Box>
+                        </Alert>
+
+                      </Box>
+                    </AccordionDetails>
+                  </Accordion>
                 </CardContent>
               </Card>
-            )}
+            </m.div>
+          )}
 
-            {/* Step 2: Questions */}
-            {activeStep === 1 && (
-              <Box>
-                {questions.map((q, qi) => (
-                  <Card key={qi} sx={{ mb: 2 }}>
+          {/* ══════════════════════════════════════════════
+              MANUAL MODE — stepper wizard
+          ══════════════════════════════════════════════ */}
+          {inputMode === 'manual' && (
+            <>
+              <Stepper activeStep={activeStep} sx={{ mb: 4 }}>
+                {steps.map(label => (
+                  <Step key={label}><StepLabel>{label}</StepLabel></Step>
+                ))}
+              </Stepper>
+
+              <m.div key={activeStep} initial={{ opacity: 0, x: 30 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.3 }}>
+
+                {/* Step 1: Test Details */}
+                {activeStep === 0 && (
+                  <Card>
                     <CardContent sx={{ p: 3 }}>
-                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-                        <Typography variant="h6">Question {qi + 1}</Typography>
-                        <IconButton color="error" onClick={() => removeQuestion(qi)} disabled={questions.length <= 1}>
-                          <Delete />
-                        </IconButton>
-                      </Box>
-
+                      <Typography variant="h6" sx={{ mb: 2 }}>Test Details</Typography>
                       <Grid container spacing={2}>
                         <Grid size={{ xs: 12 }}>
-                          <TextField fullWidth multiline rows={2} label="Question Text" value={q.questionText}
-                            onChange={e => updateQuestion(qi, 'questionText', e.target.value)} />
+                          <TextField fullWidth label="Test Title" value={title} onChange={e => setTitle(e.target.value)} required />
                         </Grid>
-                        <Grid size={{ xs: 6 }}>
+                        <Grid size={{ xs: 12, sm: 6 }}>
+                          <Autocomplete
+                            freeSolo
+                            options={categories.map(c => c.name)}
+                            value={categoryName}
+                            onInputChange={(_, val) => {
+                              setCategoryName(val);
+                              const match = categories.find(c => c.name === val);
+                              setCategoryId(match?.id || '');
+                              setTopicName('');
+                              setTopicId('');
+                            }}
+                            renderInput={(params) => <TextField {...params} label="Category" placeholder="Type or select a category" />}
+                          />
+                        </Grid>
+                        <Grid size={{ xs: 12, sm: 6 }}>
+                          <Autocomplete
+                            freeSolo
+                            options={categoryId ? filteredTopics.map(t => t.name) : topics.map(t => t.name)}
+                            value={topicName}
+                            onInputChange={(_, val) => {
+                              setTopicName(val);
+                              const match = topics.find(t => t.name === val);
+                              setTopicId(match?.id || '');
+                            }}
+                            renderInput={(params) => <TextField {...params} label="Topic" placeholder="Type or select a topic" />}
+                          />
+                        </Grid>
+                        <Grid size={{ xs: 12, sm: 6 }}>
+                          <TextField fullWidth type="number" label="Duration (minutes)" value={duration}
+                            onChange={e => setDuration(Number(e.target.value))} inputProps={{ min: 1 }} />
+                        </Grid>
+                        <Grid size={{ xs: 12, sm: 6 }}>
                           <FormControl fullWidth>
-                            <InputLabel>Type</InputLabel>
-                            <Select value={q.type} label="Type"
-                              onChange={e => updateQuestion(qi, 'type', e.target.value)}>
-                              <MenuItem value="mcq">MCQ</MenuItem>
-                              <MenuItem value="true_false">True/False</MenuItem>
-                              <MenuItem value="short_answer">Short Answer</MenuItem>
-                              <MenuItem value="paragraph">Paragraph</MenuItem>
+                            <InputLabel>Status</InputLabel>
+                            <Select value={status} label="Status" onChange={e => setStatus(e.target.value as TestStatus)}>
+                              <MenuItem value="published">Published (Visible to students)</MenuItem>
+                              <MenuItem value="draft">Draft (Instructor only)</MenuItem>
                             </Select>
                           </FormControl>
                         </Grid>
-                        <Grid size={{ xs: 6 }}>
-                          <FormControl fullWidth>
-                            <InputLabel>Difficulty</InputLabel>
-                            <Select value={q.difficulty} label="Difficulty"
-                              onChange={e => updateQuestion(qi, 'difficulty', e.target.value)}>
-                              <MenuItem value="Easy">Easy</MenuItem>
-                              <MenuItem value="Medium">Medium</MenuItem>
-                              <MenuItem value="Hard">Hard</MenuItem>
-                            </Select>
-                          </FormControl>
-                        </Grid>
-
-                        {q.type === 'mcq' && (
-                          <>
-                            {q.options.map((opt, oi) => (
-                              <Grid size={{ xs: 12, sm: 6 }} key={oi}>
-                                <TextField fullWidth label={`Option ${String.fromCharCode(65 + oi)}`} value={opt}
-                                  onChange={e => updateOption(qi, oi, e.target.value)} />
-                              </Grid>
-                            ))}
-                            <Grid size={{ xs: 12 }}>
-                              <FormControl fullWidth>
-                                <InputLabel>Correct Answer</InputLabel>
-                                <Select value={q.correctAnswer} label="Correct Answer"
-                                  onChange={e => updateQuestion(qi, 'correctAnswer', e.target.value)}>
-                                  {q.options.filter(o => o.trim()).map((opt, oi) => (
-                                    <MenuItem key={oi} value={opt}>{String.fromCharCode(65 + oi)}. {opt}</MenuItem>
-                                  ))}
-                                </Select>
-                              </FormControl>
-                            </Grid>
-                          </>
-                        )}
-
-                        {q.type === 'true_false' && (
-                          <Grid size={{ xs: 12 }}>
-                            <RadioGroup row value={q.correctAnswer}
-                              onChange={e => updateQuestion(qi, 'correctAnswer', e.target.value)}>
-                              <FormControlLabel value="True" control={<Radio />} label="True" />
-                              <FormControlLabel value="False" control={<Radio />} label="False" />
-                            </RadioGroup>
-                          </Grid>
-                        )}
-
-                        {(q.type === 'short_answer' || q.type === 'paragraph') && (
-                          <Grid size={{ xs: 12 }}>
-                            <TextField fullWidth label="Correct Answer" value={q.correctAnswer}
-                              onChange={e => updateQuestion(qi, 'correctAnswer', e.target.value)} />
-                          </Grid>
-                        )}
                         <Grid size={{ xs: 12 }}>
-                          <TextField fullWidth multiline rows={2} label="Explanation (optional)" value={q.explanation}
-                            onChange={e => updateQuestion(qi, 'explanation', e.target.value)} />
+                          <TextField fullWidth multiline rows={3} label="Description (optional)" value={description}
+                            onChange={e => setDescription(e.target.value)} />
                         </Grid>
                       </Grid>
                     </CardContent>
                   </Card>
-                ))}
+                )}
 
-                <Button fullWidth variant="outlined" startIcon={<Add />} onClick={addQuestion}
-                  sx={{ py: 1.5, borderStyle: 'dashed' }}>
-                  Add Question
-                </Button>
-              </Box>
-            )}
+                {/* Step 2: Questions */}
+                {activeStep === 1 && (
+                  <Box>
+                    {questions.map((q, qi) => (
+                      <Card key={qi} sx={{ mb: 2 }}>
+                        <CardContent sx={{ p: 3 }}>
+                          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                            <Typography variant="h6">Question {qi + 1}</Typography>
+                            <IconButton color="error" onClick={() => removeQuestion(qi)} disabled={questions.length <= 1}>
+                              <Delete />
+                            </IconButton>
+                          </Box>
 
-            {/* Step 3: Review */}
-            {activeStep === 2 && (
-              <Card>
-                <CardContent sx={{ p: 3 }}>
-                  <Typography variant="h6" sx={{ mb: 2 }}>Review Test</Typography>
-                  <Grid container spacing={2} sx={{ mb: 2 }}>
-                    <Grid size={{ xs: 6 }}><Typography color="text.secondary">Title:</Typography><Typography fontWeight={600}>{title}</Typography></Grid>
-                    <Grid size={{ xs: 6 }}><Typography color="text.secondary">Duration:</Typography><Typography fontWeight={600}>{duration} min</Typography></Grid>
-                    <Grid size={{ xs: 6 }}><Typography color="text.secondary">Category:</Typography><Typography fontWeight={600}>{categoryName || '-'}</Typography></Grid>
-                    <Grid size={{ xs: 6 }}><Typography color="text.secondary">Questions:</Typography><Typography fontWeight={600}>{questions.length}</Typography></Grid>
-                    <Grid size={{ xs: 6 }}><Typography color="text.secondary">Status:</Typography><Typography fontWeight={600}>{status === 'published' ? 'Published' : 'Draft'}</Typography></Grid>
-                  </Grid>
-                  <Divider sx={{ my: 2 }} />
-                  {questions.map((q, i) => (
-                    <Box key={i} sx={{ mb: 1.5 }}>
-                      <Typography fontWeight={600}>Q{i + 1}. {q.questionText}</Typography>
-                      <Box sx={{ display: 'flex', gap: 1, mt: 0.5 }}>
-                        <Chip label={q.type} size="small" />
-                        <Chip label={q.difficulty} size="small" color={q.difficulty === 'Easy' ? 'success' : q.difficulty === 'Hard' ? 'error' : 'warning'} />
-                        <Chip label={`Answer: ${q.correctAnswer}`} size="small" variant="outlined" />
+                          <Grid container spacing={2}>
+                            <Grid size={{ xs: 12 }}>
+                              <TextField fullWidth multiline rows={2} label="Question Text" value={q.questionText}
+                                onChange={e => updateQuestion(qi, 'questionText', e.target.value)} />
+                            </Grid>
+                            <Grid size={{ xs: 6 }}>
+                              <FormControl fullWidth>
+                                <InputLabel>Type</InputLabel>
+                                <Select value={q.type} label="Type"
+                                  onChange={e => updateQuestion(qi, 'type', e.target.value)}>
+                                  <MenuItem value="mcq">MCQ</MenuItem>
+                                  <MenuItem value="true_false">True/False</MenuItem>
+                                  <MenuItem value="short_answer">Short Answer</MenuItem>
+                                  <MenuItem value="paragraph">Paragraph</MenuItem>
+                                </Select>
+                              </FormControl>
+                            </Grid>
+                            <Grid size={{ xs: 6 }}>
+                              <FormControl fullWidth>
+                                <InputLabel>Difficulty</InputLabel>
+                                <Select value={q.difficulty} label="Difficulty"
+                                  onChange={e => updateQuestion(qi, 'difficulty', e.target.value)}>
+                                  <MenuItem value="Easy">Easy</MenuItem>
+                                  <MenuItem value="Medium">Medium</MenuItem>
+                                  <MenuItem value="Hard">Hard</MenuItem>
+                                </Select>
+                              </FormControl>
+                            </Grid>
+
+                            {q.type === 'mcq' && (
+                              <>
+                                {q.options.map((opt, oi) => (
+                                  <Grid size={{ xs: 12, sm: 6 }} key={oi}>
+                                    <TextField fullWidth label={`Option ${String.fromCharCode(65 + oi)}`} value={opt}
+                                      onChange={e => updateOption(qi, oi, e.target.value)} />
+                                  </Grid>
+                                ))}
+                                <Grid size={{ xs: 12 }}>
+                                  <FormControl fullWidth>
+                                    <InputLabel>Correct Answer</InputLabel>
+                                    <Select value={q.correctAnswer} label="Correct Answer"
+                                      onChange={e => updateQuestion(qi, 'correctAnswer', e.target.value)}>
+                                      {q.options.filter(o => o.trim()).map((opt, oi) => (
+                                        <MenuItem key={oi} value={opt}>{String.fromCharCode(65 + oi)}. {opt}</MenuItem>
+                                      ))}
+                                    </Select>
+                                  </FormControl>
+                                </Grid>
+                              </>
+                            )}
+
+                            {q.type === 'true_false' && (
+                              <Grid size={{ xs: 12 }}>
+                                <RadioGroup row value={q.correctAnswer}
+                                  onChange={e => updateQuestion(qi, 'correctAnswer', e.target.value)}>
+                                  <FormControlLabel value="True" control={<Radio />} label="True" />
+                                  <FormControlLabel value="False" control={<Radio />} label="False" />
+                                </RadioGroup>
+                              </Grid>
+                            )}
+
+                            {(q.type === 'short_answer' || q.type === 'paragraph') && (
+                              <Grid size={{ xs: 12 }}>
+                                <TextField fullWidth label="Correct Answer" value={q.correctAnswer}
+                                  onChange={e => updateQuestion(qi, 'correctAnswer', e.target.value)} />
+                              </Grid>
+                            )}
+                            <Grid size={{ xs: 12 }}>
+                              <TextField fullWidth multiline rows={2} label="Explanation (optional)" value={q.explanation}
+                                onChange={e => updateQuestion(qi, 'explanation', e.target.value)} />
+                            </Grid>
+                          </Grid>
+                        </CardContent>
+                      </Card>
+                    ))}
+
+                    <Button fullWidth variant="outlined" startIcon={<Add />} onClick={addQuestion}
+                      sx={{ py: 1.5, borderStyle: 'dashed' }}>
+                      Add Question
+                    </Button>
+                  </Box>
+                )}
+
+                {/* Step 3: Review */}
+                {activeStep === 2 && (
+                  <Card>
+                    <CardContent sx={{ p: 3 }}>
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                        <Typography variant="h6">Review Test</Typography>
+                        <Button variant="outlined" startIcon={<Visibility />} onClick={() => setPreviewOpen(true)}>
+                          Preview
+                        </Button>
                       </Box>
-                    </Box>
-                  ))}
-                </CardContent>
-              </Card>
-            )}
-          </m.div>
+                      <Grid container spacing={2} sx={{ mb: 2 }}>
+                        <Grid size={{ xs: 6 }}><Typography color="text.secondary">Title:</Typography><Typography fontWeight={600}>{title}</Typography></Grid>
+                        <Grid size={{ xs: 6 }}><Typography color="text.secondary">Duration:</Typography><Typography fontWeight={600}>{duration} min</Typography></Grid>
+                        <Grid size={{ xs: 6 }}><Typography color="text.secondary">Category:</Typography><Typography fontWeight={600}>{categoryName || '-'}</Typography></Grid>
+                        <Grid size={{ xs: 6 }}><Typography color="text.secondary">Questions:</Typography><Typography fontWeight={600}>{questions.length}</Typography></Grid>
+                        <Grid size={{ xs: 6 }}><Typography color="text.secondary">Status:</Typography><Typography fontWeight={600}>{status === 'published' ? 'Published' : 'Draft'}</Typography></Grid>
+                      </Grid>
+                      <Divider sx={{ my: 2 }} />
+                      {questions.map((q, i) => (
+                        <Box key={i} sx={{ mb: 1.5 }}>
+                          <Typography fontWeight={600}>Q{i + 1}. {q.questionText}</Typography>
+                          <Box sx={{ display: 'flex', gap: 1, mt: 0.5 }}>
+                            <Chip label={q.type} size="small" />
+                            <Chip label={q.difficulty} size="small" color={q.difficulty === 'Easy' ? 'success' : q.difficulty === 'Hard' ? 'error' : 'warning'} />
+                            <Chip label={`Answer: ${q.correctAnswer}`} size="small" variant="outlined" />
+                          </Box>
+                        </Box>
+                      ))}
+                    </CardContent>
+                  </Card>
+                )}
+              </m.div>
 
-          {/* Navigation */}
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 3 }}>
-            <Button startIcon={<ArrowBack />} disabled={activeStep === 0}
-              onClick={() => setActiveStep(prev => prev - 1)}>
-              Back
-            </Button>
-            {activeStep < 2 ? (
-              <Button variant="contained" endIcon={<ArrowForward />}
-                onClick={() => setActiveStep(prev => prev + 1)}>
-                Next
-              </Button>
-            ) : (
-              <Box sx={{ display: 'flex', gap: 1 }}>
-                <Button variant="outlined" startIcon={<Save />} onClick={() => handleSubmit('draft')} disabled={saving}>
-                  {saving ? 'Saving...' : 'Save Draft'}
+              {/* Navigation */}
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 3 }}>
+                <Button startIcon={<ArrowBack />} disabled={activeStep === 0}
+                  onClick={() => setActiveStep(prev => prev - 1)}>
+                  Back
                 </Button>
-                <Button variant="contained" startIcon={<Save />} onClick={() => handleSubmit('published')} disabled={saving}
-                  sx={{ background: 'linear-gradient(135deg, #6C63FF, #8B85FF)' }}>
-                  {saving ? 'Publishing...' : 'Publish Test'}
-                </Button>
+                {activeStep < 2 ? (
+                  <Button variant="contained" endIcon={<ArrowForward />}
+                    onClick={() => setActiveStep(prev => prev + 1)}>
+                    Next
+                  </Button>
+                ) : (
+                  <Box sx={{ display: 'flex', gap: 1 }}>
+                    <Button variant="outlined" startIcon={<Save />} onClick={() => handleSubmit('draft')} disabled={saving}>
+                      {saving ? 'Saving...' : 'Save Draft'}
+                    </Button>
+                    <Button variant="contained" startIcon={<Save />} onClick={() => handleSubmit('published')} disabled={saving}
+                      sx={{ background: 'linear-gradient(135deg, #6C63FF, #8B85FF)' }}>
+                      {saving ? 'Publishing...' : 'Publish Test'}
+                    </Button>
+                  </Box>
+                )}
               </Box>
-            )}
-          </Box>
+            </>
+          )}
         </Box>
+
+        {/* ══════════════════════════════════════════════
+            PREVIEW DIALOG — student view of the test
+        ══════════════════════════════════════════════ */}
+        <Dialog open={previewOpen} onClose={() => setPreviewOpen(false)} maxWidth="md" fullWidth scroll="paper">
+          <DialogTitle sx={{ pb: 1 }}>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <Box>
+                <Typography variant="h6">{title || 'Untitled Test'}</Typography>
+                <Typography variant="body2" color="text.secondary">
+                  {categoryName}{topicName ? ` — ${topicName}` : ''} &bull; {duration} min &bull; {questions.length} question{questions.length !== 1 ? 's' : ''}
+                </Typography>
+              </Box>
+              <Chip label="Student View" color="primary" size="small" sx={{ mt: 0.5 }} />
+            </Box>
+          </DialogTitle>
+
+          <DialogContent dividers>
+            {description && <Alert severity="info" sx={{ mb: 3 }}>{description}</Alert>}
+
+            {questions.map((q, i) => (
+              <Paper key={i} variant="outlined" sx={{ p: 3, mb: 2 }}>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 1.5 }}>
+                  <Typography fontWeight={700} sx={{ flex: 1, pr: 1 }}>Q{i + 1}. {q.questionText}</Typography>
+                  <Chip label={q.difficulty} size="small"
+                    color={q.difficulty === 'Easy' ? 'success' : q.difficulty === 'Hard' ? 'error' : 'warning'} />
+                </Box>
+
+                {/* MCQ options */}
+                {q.type === 'mcq' && (
+                  <Box sx={{ display: 'grid', gap: 1 }}>
+                    {q.options.filter(o => o.trim()).map((opt, oi) => {
+                      const isCorrect = opt === q.correctAnswer;
+                      return (
+                        <Box key={oi} sx={{
+                          display: 'flex', alignItems: 'center', gap: 1.5, p: 1.5,
+                          borderRadius: 1, border: '1px solid',
+                          borderColor: isCorrect ? 'success.main' : 'divider',
+                          bgcolor: isCorrect ? 'success.50' : 'transparent',
+                        }}>
+                          <Box sx={{
+                            width: 22, height: 22, borderRadius: '50%', border: '2px solid',
+                            borderColor: isCorrect ? 'success.main' : 'text.secondary',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                          }}>
+                            {isCorrect && <CheckCircle sx={{ fontSize: 16 }} color="success" />}
+                          </Box>
+                          <Typography variant="body2" sx={{ flex: 1 }}>
+                            <strong>{String.fromCharCode(65 + oi)}.</strong> {opt}
+                          </Typography>
+                          {isCorrect && <Chip label="Correct" size="small" color="success" />}
+                        </Box>
+                      );
+                    })}
+                  </Box>
+                )}
+
+                {/* True/False */}
+                {q.type === 'true_false' && (
+                  <Box sx={{ display: 'flex', gap: 2 }}>
+                    {['True', 'False'].map(opt => (
+                      <Box key={opt} sx={{
+                        flex: 1, p: 2, borderRadius: 1, border: '1px solid', textAlign: 'center',
+                        borderColor: opt === q.correctAnswer ? 'success.main' : 'divider',
+                        bgcolor: opt === q.correctAnswer ? 'success.50' : 'transparent',
+                      }}>
+                        <Typography fontWeight={opt === q.correctAnswer ? 700 : 400}>
+                          {opt} {opt === q.correctAnswer ? '✓' : ''}
+                        </Typography>
+                      </Box>
+                    ))}
+                  </Box>
+                )}
+
+                {/* Short / Paragraph */}
+                {(q.type === 'short_answer' || q.type === 'paragraph') && (
+                  <Box sx={{ p: 2, bgcolor: 'action.hover', borderRadius: 1, border: '1px solid', borderColor: 'divider' }}>
+                    <Typography variant="caption" color="text.secondary" display="block">Expected Answer:</Typography>
+                    <Typography variant="body2" sx={{ mt: 0.5 }}>{q.correctAnswer || '—'}</Typography>
+                  </Box>
+                )}
+
+                {q.explanation && (
+                  <Alert severity="info" icon={false} sx={{ mt: 1.5, py: 0.5 }}>
+                    <Typography variant="caption" fontWeight={700}>Explanation: </Typography>
+                    <Typography variant="caption">{q.explanation}</Typography>
+                  </Alert>
+                )}
+              </Paper>
+            ))}
+          </DialogContent>
+
+          <DialogActions>
+            <Button onClick={() => setPreviewOpen(false)}>Close</Button>
+          </DialogActions>
+        </Dialog>
+
       </DashboardLayout>
     </ProtectedRoute>
   );
 }
+
