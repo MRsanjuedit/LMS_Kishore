@@ -19,7 +19,18 @@ interface ResourceItem {
   type: 'video' | 'playlist';
   description?: string;
   createdBy: string;
+  createdAt?: unknown;
 }
+
+const createdAtToMillis = (value: unknown): number => {
+  if (!value) return 0;
+  if (typeof value === 'number') return value;
+  if (value instanceof Date) return value.getTime();
+  if (typeof value === 'object' && value !== null && 'toMillis' in value && typeof (value as { toMillis: () => number }).toMillis === 'function') {
+    return (value as { toMillis: () => number }).toMillis();
+  }
+  return 0;
+};
 
 const getResourceType = (url: string): 'video' | 'playlist' | null => {
   const lower = url.toLowerCase();
@@ -43,6 +54,7 @@ export default function InstructorResourcesPage() {
   const loadResources = async () => {
     if (!user) return;
     setLoading(true);
+    setError('');
     try {
       const snap = await getDocs(
         query(
@@ -54,9 +66,26 @@ export default function InstructorResourcesPage() {
       const list: ResourceItem[] = [];
       snap.forEach(d => list.push({ id: d.id, ...d.data() } as ResourceItem));
       setResources(list);
-    } catch (err) {
-      console.error('Failed to load resources:', err);
-      setError('Failed to load your resources.');
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (message.includes('requires an index') || message.includes('currently building')) {
+        try {
+          const fallbackSnap = await getDocs(
+            query(collection(db, 'resources'), where('createdBy', '==', user.uid))
+          );
+          const fallbackList: ResourceItem[] = [];
+          fallbackSnap.forEach(d => fallbackList.push({ id: d.id, ...d.data() } as ResourceItem));
+          fallbackList.sort((a, b) => createdAtToMillis(b.createdAt) - createdAtToMillis(a.createdAt));
+          setResources(fallbackList);
+          setError('Index is still building. Showing resources with temporary fallback query.');
+        } catch (fallbackErr) {
+          console.error('Failed to load resources (fallback):', fallbackErr);
+          setError('Failed to load your resources.');
+        }
+      } else {
+        console.error('Failed to load resources:', err);
+        setError('Failed to load your resources.');
+      }
     }
     setLoading(false);
   };
