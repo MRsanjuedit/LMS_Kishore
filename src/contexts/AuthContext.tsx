@@ -34,6 +34,7 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType>({} as AuthContextType);
 const PROFILE_CACHE_PREFIX = 'edutech_profile_';
+const debugAuth = process.env.NEXT_PUBLIC_DEBUG_AUTH === 'true';
 
 const isUserRole = (value: unknown): value is UserRole =>
   value === 'student' || value === 'instructor' || value === 'admin';
@@ -98,6 +99,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       const serverProfile = await getServerProfileWithRetry(firebaseUser);
       if (serverProfile) {
+        if (debugAuth) console.info('[Auth] fetchProfile resolved from Firestore', { uid: firebaseUser.uid, role: serverProfile.role });
         setProfile(serverProfile);
         setCachedProfile(serverProfile);
         return;
@@ -106,6 +108,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // Do NOT auto-create user documents here.
       // Account provisioning flows (signup/instructor setup) are responsible for writing
       // the role; auto-creating can race and incorrectly lock role as student.
+      if (debugAuth) console.warn('[Auth] fetchProfile using fallback/cached profile', { uid: firebaseUser.uid, cachedRole: cachedProfile?.role || null });
       setProfile(cachedProfile || fallbackProfile);
     } catch (err) {
       console.error('Failed to fetch user profile, using fallback profile:', err);
@@ -136,6 +139,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // In production, Firestore read can briefly fail right after auth while token claims propagate.
     const serverProfile = await getServerProfileWithRetry(cred.user);
     if (serverProfile) {
+      if (debugAuth) console.info('[Auth] signIn resolved role from Firestore', { uid: cred.user.uid, role: serverProfile.role });
       setProfile(serverProfile);
       setCachedProfile(serverProfile);
       return serverProfile.role;
@@ -143,10 +147,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     const cached = getCachedProfile(cred.user.uid);
     if (cached && isUserRole(cached.role)) {
+      if (debugAuth) console.warn('[Auth] signIn using cached role', { uid: cred.user.uid, role: cached.role });
       setProfile(cached);
       return cached.role;
     }
 
+    if (debugAuth) console.warn('[Auth] signIn defaulting role to student after retries', { uid: cred.user.uid });
     return 'student';
   };
 

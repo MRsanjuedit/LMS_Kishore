@@ -11,6 +11,7 @@ import { getStorage } from 'firebase/storage';
 
 const DEFAULT_FIREBASE_PROJECT_ID = 'hema-satya-foods';
 const projectId = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || DEFAULT_FIREBASE_PROJECT_ID;
+const debugAuth = process.env.NEXT_PUBLIC_DEBUG_AUTH === 'true';
 const apiKey = process.env.NEXT_PUBLIC_FIREBASE_API_KEY || '';
 const appId = process.env.NEXT_PUBLIC_FIREBASE_APP_ID || '';
 const authDomain = process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN || (projectId ? `${projectId}.firebaseapp.com` : '');
@@ -36,6 +37,9 @@ function getApp(): FirebaseApp {
 }
 
 const app = getApp();
+if (typeof window !== 'undefined' && debugAuth) {
+  console.info('[Firebase Config]', { projectId, authDomain, storageBucket, hasApiKey: Boolean(apiKey), hasAppId: Boolean(appId) });
+}
 export const auth = getAuth(app);
 
 const getDb = () => {
