@@ -1,16 +1,6 @@
 import type { NextConfig } from "next";
-import { readFileSync, existsSync } from "fs";
-import { join } from "path";
-
-// Read project_id from the service account JSON at build time
-let projectId = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || "";
-const saPath = join(process.cwd(), "hema-satya-foods-firebase-adminsdk-fbsvc-ef66ebb2cc.json");
-if (existsSync(saPath)) {
-  try {
-    const sa = JSON.parse(readFileSync(saPath, "utf-8"));
-    projectId = sa.project_id || projectId;
-  } catch { /* ignore parse errors */ }
-}
+const DEFAULT_FIREBASE_PROJECT_ID = "hema-satya-foods";
+const projectId = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || DEFAULT_FIREBASE_PROJECT_ID;
 
 const nextConfig: NextConfig = {
   reactCompiler: true,

@@ -9,7 +9,8 @@ import {
 import { getFunctions } from 'firebase/functions';
 import { getStorage } from 'firebase/storage';
 
-const projectId = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || '';
+const DEFAULT_FIREBASE_PROJECT_ID = 'hema-satya-foods';
+const projectId = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || DEFAULT_FIREBASE_PROJECT_ID;
 const apiKey = process.env.NEXT_PUBLIC_FIREBASE_API_KEY || '';
 const appId = process.env.NEXT_PUBLIC_FIREBASE_APP_ID || '';
 const authDomain = process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN || (projectId ? `${projectId}.firebaseapp.com` : '');
