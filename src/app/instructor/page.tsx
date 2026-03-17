@@ -33,10 +33,13 @@ export default function InstructorDashboard() {
     const load = async () => {
       try {
         const testsBaseQuery = query(collection(db, 'tests'), where('createdBy', '==', user.uid));
-        const testsCountSnap = await getCountFromServer(testsBaseQuery);
-        const testsSnap = await getDocs(
-          query(testsBaseQuery, orderBy('createdAt', 'desc'), limit(100))
-        );
+
+        // Fetch count + full list in parallel (independent requests)
+        const [testsCountSnap, testsSnap] = await Promise.all([
+          getCountFromServer(testsBaseQuery),
+          getDocs(query(testsBaseQuery, orderBy('createdAt', 'desc'), limit(100))),
+        ]);
+
         const testIds: string[] = [];
         const testList: Array<{ id: string; title: string; questionCount: number }> = [];
         testsSnap.forEach(d => {
@@ -53,14 +56,14 @@ export default function InstructorDashboard() {
         submissionsCount = subsCountSnap.data().count;
         if (submissionsCount === 0 && testIds.length > 0) {
           const idChunks = chunkArray(testIds, 10);
-          let legacyCount = 0;
-          for (const ids of idChunks) {
-            const chunkCountSnap = await getCountFromServer(
-              query(collection(db, 'submissions'), where('testId', 'in', ids))
-            );
-            legacyCount += chunkCountSnap.data().count;
-          }
-          submissionsCount = legacyCount;
+          // Fetch all chunks in parallel instead of sequentially
+          const chunkCounts = await Promise.all(
+            idChunks.map(ids =>
+              getCountFromServer(query(collection(db, 'submissions'), where('testId', 'in', ids)))
+                .then(s => s.data().count)
+            )
+          );
+          submissionsCount = chunkCounts.reduce((a, b) => a + b, 0);
         }
 
         setStats({ tests: testsCountSnap.data().count, questions: totalQuestions, submissions: submissionsCount });

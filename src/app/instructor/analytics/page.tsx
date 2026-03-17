@@ -34,34 +34,36 @@ export default function InstructorAnalyticsPage() {
     if (!user) return;
     const load = async () => {
       try {
-        const testsSnap = await getDocs(
-          query(collection(db, 'tests'), where('createdBy', '==', user.uid))
-        );
+        // Both queries are independent — run in parallel
+        const [testsSnap, subsSnap] = await Promise.all([
+          getDocs(query(collection(db, 'tests'), where('createdBy', '==', user.uid))),
+          getDocs(
+            query(
+              collection(db, 'submissions'),
+              where('instructorId', '==', user.uid),
+              limit(2000)
+            )
+          ),
+        ]);
 
         const testMap: Record<string, string> = {};
         testsSnap.forEach(d => { testMap[d.id] = d.data().title; });
 
         const allSubs: Array<{ testId: string; accuracy: number }> = [];
-        const subsSnap = await getDocs(
-          query(
-            collection(db, 'submissions'),
-            where('instructorId', '==', user.uid),
-            limit(2000)
-          )
-        );
         if (subsSnap.empty && Object.keys(testMap).length > 0) {
           const idChunks = chunkArray(Object.keys(testMap), 10);
-          const fallbackSubs: Array<{ testId: string; accuracy: number }> = [];
-          for (const ids of idChunks) {
-            const legacySnap = await getDocs(
-              query(collection(db, 'submissions'), where('testId', 'in', ids))
-            );
-            legacySnap.forEach((docSnap) => {
+          // All fallback chunks in parallel
+          const chunkSnaps = await Promise.all(
+            idChunks.map(ids =>
+              getDocs(query(collection(db, 'submissions'), where('testId', 'in', ids)))
+            )
+          );
+          chunkSnaps.forEach(snap => {
+            snap.forEach(docSnap => {
               const data = docSnap.data();
-              fallbackSubs.push({ testId: data.testId, accuracy: data.accuracy || 0 });
+              allSubs.push({ testId: data.testId, accuracy: data.accuracy || 0 });
             });
-          }
-          fallbackSubs.forEach((s) => allSubs.push(s));
+          });
         }
         subsSnap.forEach(d => {
           const data = d.data();

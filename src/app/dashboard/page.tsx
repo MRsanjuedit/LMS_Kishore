@@ -12,13 +12,14 @@ import {
 import { motion as m } from 'framer-motion';
 import { collection, query, where, getDocs, orderBy, limit } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import { getCachedOrFetch } from '@/lib/dataCache';
+import { getCachedOrFetch, getSWRData } from '@/lib/dataCache';
 import { useAuth } from '@/contexts/AuthContext';
 import DashboardLayout from '@/components/DashboardLayout';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import { useRouter } from 'next/navigation';
 
-const TESTS_CACHE_TTL = 60 * 1000;
+const TESTS_CACHE_TTL = 5 * 60 * 1000;   // 5 min
+const RESULTS_CACHE_TTL = 30 * 1000;     // 30 s (user-specific, changes often)
 
 interface TestItem {
   id: string;
@@ -54,51 +55,84 @@ export default function StudentDashboard() {
 
   useEffect(() => {
     if (!user) return;
-    const load = async () => {
-      try {
-        const testList = await getCachedOrFetch('dashboard_tests_latest_6', TESTS_CACHE_TTL, async () => {
-          const testsSnap = await getDocs(query(collection(db, 'tests'), orderBy('createdAt', 'desc'), limit(6)));
-          const tests: TestItem[] = [];
-          testsSnap.forEach(doc => {
-            tests.push({ id: doc.id, ...doc.data() } as TestItem);
-          });
-          return tests;
-        });
-        setTests(testList);
 
-        const resultsQ = query(
+    // ── fetcher helpers ────────────────────────────────────────────
+    const testsFetcher = async (): Promise<TestItem[]> => {
+      const snap = await getDocs(
+        query(collection(db, 'tests'), orderBy('createdAt', 'desc'), limit(6))
+      );
+      const list: TestItem[] = [];
+      snap.forEach(doc => list.push({ id: doc.id, ...doc.data() } as TestItem));
+      return list;
+    };
+
+    const resultsFetcher = async (): Promise<RecentResult[]> => {
+      const snap = await getDocs(
+        query(
           collection(db, 'submissions'),
           where('userId', '==', user.uid),
           orderBy('createdAt', 'desc'),
           limit(5)
-        );
-        const resultsSnap = await getDocs(resultsQ);
-        const resultList: RecentResult[] = [];
-        resultsSnap.forEach(doc => {
-          const d = doc.data();
-          resultList.push({
-            id: doc.id,
-            testTitle: d.testTitle || 'Test',
-            score: d.score,
-            total: d.total,
-            accuracy: d.accuracy,
-            timeTaken: d.timeTaken,
-            createdAt: d.createdAt?.toDate(),
-          });
+        )
+      );
+      const list: RecentResult[] = [];
+      snap.forEach(doc => {
+        const d = doc.data();
+        list.push({
+          id: doc.id,
+          testTitle: d.testTitle || 'Test',
+          score: d.score,
+          total: d.total,
+          accuracy: d.accuracy,
+          timeTaken: d.timeTaken,
+          createdAt: d.createdAt?.toDate(),
         });
-        setResults(resultList);
+      });
+      return list;
+    };
 
-        if (resultList.length > 0) {
-          const avgAcc = resultList.reduce((s, r) => s + r.accuracy, 0) / resultList.length;
-          const best = Math.max(...resultList.map(r => r.accuracy));
-          setStats({ totalTests: resultList.length, avgAccuracy: Math.round(avgAcc), bestScore: Math.round(best) });
-        }
+    const applyResults = (list: RecentResult[]) => {
+      setResults(list);
+      if (list.length > 0) {
+        const avgAcc = list.reduce((s, r) => s + r.accuracy, 0) / list.length;
+        const best = Math.max(...list.map(r => r.accuracy));
+        setStats({ totalTests: list.length, avgAccuracy: Math.round(avgAcc), bestScore: Math.round(best) });
+      }
+    };
+
+    const RESULTS_KEY = `dashboard_results_${user.uid}`;
+
+    // ── all state updates happen inside the async function ─────────
+    const load = async () => {
+      // stale-while-revalidate: serve cached data instantly
+      const cachedTests = getSWRData('dashboard_tests_latest_6', TESTS_CACHE_TTL, testsFetcher, setTests);
+      const cachedResults = getSWRData(RESULTS_KEY, RESULTS_CACHE_TTL, resultsFetcher, applyResults);
+
+      if (cachedTests !== null) setTests(cachedTests);
+      if (cachedResults !== null) applyResults(cachedResults);
+
+      // If both served from cache → no spinner needed
+      if (cachedTests !== null && cachedResults !== null) {
+        setLoading(false);
+        return;
+      }
+
+      // parallel fetch for any missing data
+      try {
+        await Promise.all([
+          cachedTests === null
+            ? getCachedOrFetch('dashboard_tests_latest_6', TESTS_CACHE_TTL, testsFetcher).then(setTests)
+            : Promise.resolve(),
+          cachedResults === null
+            ? getCachedOrFetch(RESULTS_KEY, RESULTS_CACHE_TTL, resultsFetcher).then(applyResults)
+            : Promise.resolve(),
+        ]);
       } catch (err) {
         console.error('Error loading dashboard:', err);
       }
       setLoading(false);
     };
-    load();
+    void load();
   }, [user]);
 
   const greeting = () => {
