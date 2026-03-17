@@ -39,6 +39,31 @@ const getResourceType = (url: string): 'video' | 'playlist' | null => {
   return 'video';
 };
 
+const getYouTubeThumbnail = (url: string): string | null => {
+  try {
+    const parsed = new URL(url);
+    const host = parsed.hostname.replace('www.', '');
+    let videoId = '';
+
+    if (host === 'youtu.be') {
+      videoId = parsed.pathname.replace('/', '').split('/')[0] || '';
+    } else if (host.includes('youtube.com')) {
+      if (parsed.pathname === '/watch') {
+        videoId = parsed.searchParams.get('v') || '';
+      } else if (parsed.pathname.startsWith('/shorts/')) {
+        videoId = parsed.pathname.split('/')[2] || '';
+      } else if (parsed.pathname.startsWith('/embed/')) {
+        videoId = parsed.pathname.split('/')[2] || '';
+      }
+    }
+
+    if (!videoId) return null;
+    return `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
+  } catch {
+    return null;
+  }
+};
+
 export default function InstructorResourcesPage() {
   const { user } = useAuth();
   const [title, setTitle] = useState('');
@@ -187,6 +212,18 @@ export default function InstructorResourcesPage() {
               {resources.map(resource => (
                 <Grid size={{ xs: 12, md: 6 }} key={resource.id}>
                   <Card>
+                    {getYouTubeThumbnail(resource.url) ? (
+                      <Box
+                        component="img"
+                        src={getYouTubeThumbnail(resource.url) || ''}
+                        alt={resource.title}
+                        sx={{ width: '100%', height: 190, objectFit: 'cover', display: 'block' }}
+                      />
+                    ) : (
+                      <Box sx={{ width: '100%', height: 190, bgcolor: 'action.hover', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <VideoLibrary color="primary" sx={{ fontSize: 44 }} />
+                      </Box>
+                    )}
                     <CardContent>
                       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', gap: 1 }}>
                         <Box>
