@@ -78,10 +78,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return;
       }
 
-      await setDoc(userRef, {
-        ...fallbackProfile,
-        createdAt: serverTimestamp(),
-      }, { merge: true });
+      // Do NOT auto-create user documents here.
+      // Account provisioning flows (signup/instructor setup) are responsible for writing
+      // the role; auto-creating can race and incorrectly lock role as student.
       setProfile(fallbackProfile);
       setCachedProfile(fallbackProfile);
     } catch (err) {
@@ -146,6 +145,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       ...instructorProfile,
       createdAt: serverTimestamp(),
     });
+    setCachedProfile(instructorProfile);
     // Sign out immediately — instructor should log in explicitly
     await firebaseSignOut(auth);
     setProfile(null);
