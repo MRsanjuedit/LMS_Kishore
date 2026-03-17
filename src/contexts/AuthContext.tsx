@@ -26,8 +26,9 @@ interface AuthContextType {
   user: User | null;
   profile: UserProfile | null;
   loading: boolean;
-  signIn: (email: string, password: string) => Promise<void>;
+  signIn: (email: string, password: string) => Promise<UserRole>;
   signUp: (email: string, password: string, name: string, role: UserRole) => Promise<void>;
+    createAdmin: (email: string, password: string, name: string) => Promise<void>;
   signOut: () => Promise<void>;
 }
 
@@ -108,7 +109,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [fetchProfile]);
 
   const signIn = async (email: string, password: string) => {
-    await signInWithEmailAndPassword(auth, email, password);
+    const cred = await signInWithEmailAndPassword(auth, email, password);
+    // Fetch role immediately so the caller can redirect correctly
+    try {
+      const snap = await getDoc(doc(db, 'users', cred.user.uid));
+      if (snap.exists()) {
+        return (snap.data() as UserProfile).role;
+      }
+    } catch {
+      // ignore; profile will load via onAuthStateChanged
+    }
+    return 'student';
   };
 
   const signUp = async (email: string, password: string, name: string, role: UserRole) => {
@@ -127,13 +138,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setProfile(userProfile);
   };
 
+  const createAdmin = async (email: string, password: string, name: string) => {
+    const cred = await createUserWithEmailAndPassword(auth, email, password);
+    await updateProfile(cred.user, { displayName: name });
+    const adminProfile: UserProfile = { uid: cred.user.uid, name, email, role: 'admin' };
+    await setDoc(doc(db, 'users', cred.user.uid), {
+      ...adminProfile,
+      createdAt: serverTimestamp(),
+    });
+    // Sign out immediately — admin should log in explicitly
+    await firebaseSignOut(auth);
+    setProfile(null);
+    setUser(null);
+  };
+
   const signOut = async () => {
     await firebaseSignOut(auth);
     setProfile(null);
   };
 
   return (
-    <AuthContext.Provider value={{ user, profile, loading, signIn, signUp, signOut }}>
+    <AuthContext.Provider value={{ user, profile, loading, signIn, signUp, createAdmin, signOut }}>
       {children}
     </AuthContext.Provider>
   );

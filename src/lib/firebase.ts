@@ -4,7 +4,7 @@ import {
   getFirestore,
   initializeFirestore,
   persistentLocalCache,
-  persistentMultipleTabManager,
+  memoryLocalCache,
 } from 'firebase/firestore';
 import { getFunctions } from 'firebase/functions';
 import { getStorage } from 'firebase/storage';
@@ -42,12 +42,18 @@ const getDb = () => {
     return getFirestore(app);
   }
 
+  // Try persistent (IndexedDB) cache first — speeds up repeat loads
   try {
     return initializeFirestore(app, {
-      localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
+      localCache: persistentLocalCache(),
     });
   } catch {
-    return getFirestore(app);
+    // Already initialized or IndexedDB unavailable — fall back to in-memory cache
+    try {
+      return initializeFirestore(app, { localCache: memoryLocalCache() });
+    } catch {
+      return getFirestore(app);
+    }
   }
 };
 

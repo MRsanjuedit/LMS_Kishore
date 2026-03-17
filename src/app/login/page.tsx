@@ -25,9 +25,11 @@ export default function LoginPage() {
     setError('');
     setLoading(true);
     try {
-      await signIn(email, password);
+      const role = await signIn(email, password);
       toast.success('Welcome back!');
-      router.push('/dashboard');
+      if (role === 'admin') router.push('/admin');
+      else if (role === 'instructor') router.push('/instructor');
+      else router.push('/dashboard');
     } catch (err: unknown) {
       const code = (err as { code?: string }).code || '';
       if (code === 'auth/user-not-found' || code === 'auth/wrong-password' || code === 'auth/invalid-credential') {
