@@ -5,6 +5,63 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 admin.initializeApp();
 const db = admin.firestore();
 
+export const createInstructorByAdmin = functions.https.onCall(async (request) => {
+  if (!request.auth?.uid) {
+    throw new functions.https.HttpsError("unauthenticated", "You must be signed in.");
+  }
+
+  const adminDoc = await db.collection("users").doc(request.auth.uid).get();
+  if (!adminDoc.exists || adminDoc.data()?.role !== "admin") {
+    throw new functions.https.HttpsError("permission-denied", "Only admins can create instructor accounts.");
+  }
+
+  const { email, password, name } = request.data || {};
+  const normalizedEmail = typeof email === "string" ? email.trim().toLowerCase() : "";
+  const normalizedName = typeof name === "string" ? name.trim() : "";
+
+  if (!normalizedEmail || !password || !normalizedName) {
+    throw new functions.https.HttpsError("invalid-argument", "name, email and password are required.");
+  }
+
+  if (String(password).length < 6) {
+    throw new functions.https.HttpsError("invalid-argument", "Password must be at least 6 characters.");
+  }
+
+  try {
+    await admin.auth().getUserByEmail(normalizedEmail);
+    throw new functions.https.HttpsError("already-exists", "An account with this email already exists.");
+  } catch (err: unknown) {
+    const code = (err as { code?: string }).code || "";
+    if (code && code !== "auth/user-not-found") {
+      if (err instanceof functions.https.HttpsError) throw err;
+      throw new functions.https.HttpsError("internal", "Failed to validate email.");
+    }
+  }
+
+  const newUser = await admin.auth().createUser({
+    email: normalizedEmail,
+    password: String(password),
+    displayName: normalizedName,
+    emailVerified: false,
+    disabled: false,
+  });
+
+  await db.collection("users").doc(newUser.uid).set({
+    uid: newUser.uid,
+    name: normalizedName,
+    email: normalizedEmail,
+    role: "instructor",
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+  });
+
+  return {
+    uid: newUser.uid,
+    email: normalizedEmail,
+    name: normalizedName,
+    role: "instructor",
+  };
+});
+
 // Initialize Gemini AI - API key stored in Firebase config
 function getGeminiModel() {
   const apiKey = process.env.GEMINI_API_KEY || functions.config().gemini?.key || "";

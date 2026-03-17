@@ -24,16 +24,16 @@ export default function RegisterInstructorPage() {
             Instructor Registration Moved
           </Typography>
           <Typography color="text.secondary" sx={{ mb: 3 }}>
-            Instructor accounts are created only through the secure setup flow.
-            Please continue to the setup page.
+            Instructor accounts are created only by admins from User Management.
+            Please contact an admin to get access.
           </Typography>
           <Button
             variant="contained"
             fullWidth
-            onClick={() => router.push('/create-admin')}
+            onClick={() => router.push('/login')}
             sx={{ background: 'linear-gradient(135deg, #6C63FF, #8B85FF)' }}
           >
-            Go to Instructor Setup
+            Go to Login
           </Button>
         </CardContent>
       </Card>

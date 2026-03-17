@@ -95,7 +95,7 @@ export default function SignupPage() {
             </Typography>
             <Typography textAlign="center" color="text.secondary" variant="body2">
               Are you an instructor?{' '}
-              <MuiLink href="/create-admin" sx={{ fontWeight: 600, cursor: 'pointer' }}>Use instructor setup</MuiLink>
+              Contact an admin to create your instructor account.
             </Typography>
           </CardContent>
         </Card>
