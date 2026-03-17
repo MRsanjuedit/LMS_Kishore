@@ -73,6 +73,7 @@ export default function InstructorResourcesPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [resources, setResources] = useState<ResourceItem[]>([]);
+  const [resolvedThumbnails, setResolvedThumbnails] = useState<Record<string, string>>({});
 
   const detectedType = useMemo(() => getResourceType(url), [url]);
 
@@ -98,6 +99,46 @@ export default function InstructorResourcesPage() {
   useEffect(() => {
     void loadResources();
   }, [user]);
+
+  useEffect(() => {
+    if (resources.length === 0) return;
+    let cancelled = false;
+
+    const resolvePlaylistThumbs = async () => {
+      const candidates = resources.filter(r => !getYouTubeThumbnail(r.url) && !resolvedThumbnails[r.id]);
+      if (candidates.length === 0) return;
+
+      const resolved = await Promise.all(
+        candidates.map(async (resource) => {
+          try {
+            const res = await fetch(`https://www.youtube.com/oembed?url=${encodeURIComponent(resource.url)}&format=json`);
+            if (!res.ok) return null;
+            const data = (await res.json()) as { thumbnail_url?: string };
+            if (!data.thumbnail_url) return null;
+            return { id: resource.id, thumbnail: data.thumbnail_url };
+          } catch {
+            return null;
+          }
+        })
+      );
+
+      if (cancelled) return;
+
+      const updates: Record<string, string> = {};
+      resolved.forEach(item => {
+        if (item?.thumbnail) updates[item.id] = item.thumbnail;
+      });
+
+      if (Object.keys(updates).length > 0) {
+        setResolvedThumbnails(prev => ({ ...prev, ...updates }));
+      }
+    };
+
+    void resolvePlaylistThumbs();
+    return () => {
+      cancelled = true;
+    };
+  }, [resources, resolvedThumbnails]);
 
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -212,10 +253,10 @@ export default function InstructorResourcesPage() {
               {resources.map(resource => (
                 <Grid size={{ xs: 12, md: 6 }} key={resource.id}>
                   <Card>
-                    {getYouTubeThumbnail(resource.url) ? (
+                    {(getYouTubeThumbnail(resource.url) || resolvedThumbnails[resource.id]) ? (
                       <Box
                         component="img"
-                        src={getYouTubeThumbnail(resource.url) || ''}
+                        src={getYouTubeThumbnail(resource.url) || resolvedThumbnails[resource.id] || ''}
                         alt={resource.title}
                         sx={{ width: '100%', height: 190, objectFit: 'cover', display: 'block' }}
                       />
