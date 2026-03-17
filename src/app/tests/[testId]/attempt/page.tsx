@@ -61,6 +61,22 @@ export default function TestAttemptPage() {
   const [submitting, setSubmitting] = useState(false);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const startTimeRef = useRef<number>(Date.now());
+  const answersRef = useRef<Record<string, string>>({});
+  const questionsRef = useRef<Question[]>([]);
+  const testRef = useRef<TestData | null>(null);
+  const submittingRef = useRef(false);
+
+  useEffect(() => {
+    answersRef.current = answers;
+  }, [answers]);
+
+  useEffect(() => {
+    questionsRef.current = questions;
+  }, [questions]);
+
+  useEffect(() => {
+    testRef.current = test;
+  }, [test]);
 
   // Load test and questions
   useEffect(() => {
@@ -119,17 +135,12 @@ export default function TestAttemptPage() {
     if (loading || timeLeft <= 0) return;
     timerRef.current = setInterval(() => {
       setTimeLeft(prev => {
-        if (prev <= 1) {
-          if (timerRef.current) clearInterval(timerRef.current);
-          handleSubmit(true);
-          return 0;
-        }
+        if (prev <= 1) return 0;
         return prev - 1;
       });
     }, 1000);
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loading]);
+  }, [loading, timeLeft]);
 
   const formatTime = (s: number) => {
     const m = Math.floor(s / 60);
@@ -150,17 +161,21 @@ export default function TestAttemptPage() {
   };
 
   const handleSubmit = useCallback(async (autoSubmit = false) => {
-    if (submitting) return;
+    if (submittingRef.current) return;
+    submittingRef.current = true;
     setSubmitting(true);
     if (timerRef.current) clearInterval(timerRef.current);
 
     try {
       const timeTaken = Math.round((Date.now() - startTimeRef.current) / 60000);
+      const latestQuestions = questionsRef.current;
+      const latestAnswers = answersRef.current;
+      const latestTest = testRef.current;
       let score = 0;
-      const total = questions.length;
+      const total = latestQuestions.length;
 
-      questions.forEach(q => {
-        if (answers[q.id]?.trim().toLowerCase() === q.correctAnswer?.trim().toLowerCase()) {
+      latestQuestions.forEach(q => {
+        if (latestAnswers[q.id]?.trim().toLowerCase() === q.correctAnswer?.trim().toLowerCase()) {
           score++;
         }
       });
@@ -170,8 +185,8 @@ export default function TestAttemptPage() {
       await addDoc(collection(db, 'submissions'), {
         userId: user?.uid,
         testId,
-        testTitle: test?.title || '',
-        answers,
+        testTitle: latestTest?.title || '',
+        answers: latestAnswers,
         score,
         total,
         accuracy,
@@ -186,9 +201,17 @@ export default function TestAttemptPage() {
     } catch (err) {
       console.error('Submit error:', err);
       toast.error('Failed to submit test');
+      submittingRef.current = false;
       setSubmitting(false);
     }
-  }, [submitting, questions, answers, user, testId, test, router]);
+  }, [user, testId, router]);
+
+  useEffect(() => {
+    if (loading) return;
+    if (timeLeft !== 0) return;
+    if (submittingRef.current) return;
+    void handleSubmit(true);
+  }, [timeLeft, loading, handleSubmit]);
 
   const currentQuestion = questions[currentQ];
   const answered = Object.keys(answers).length;
