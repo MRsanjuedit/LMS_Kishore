@@ -31,7 +31,27 @@ export default function InstructorTestDetailPage() {
         const sSnap = await getDocs(query(collection(db, 'submissions'), where('testId', '==', testId)));
         const ss: Array<Record<string, unknown>> = [];
         sSnap.forEach(d => ss.push({ id: d.id, ...d.data() }));
-        setSubmissions(ss);
+
+        const userIds = Array.from(new Set(ss.map(s => String(s.userId || '')).filter(Boolean)));
+        const nameEntries = await Promise.all(
+          userIds.map(async (uid) => {
+            try {
+              const userDoc = await getDoc(doc(db, 'users', uid));
+              const userData = userDoc.exists() ? userDoc.data() : null;
+              return [uid, (userData?.name as string) || uid.slice(0, 8)] as const;
+            } catch {
+              return [uid, uid.slice(0, 8)] as const;
+            }
+          })
+        );
+
+        const namesByUid = Object.fromEntries(nameEntries) as Record<string, string>;
+        const withNames = ss.map((submission) => ({
+          ...submission,
+          studentName: namesByUid[String(submission.userId || '')] || 'Student',
+        }));
+
+        setSubmissions(withNames);
       } catch (err) {
         console.error('Error:', err);
       }
@@ -95,7 +115,7 @@ export default function InstructorTestDetailPage() {
                   <TableBody>
                     {submissions.map(s => (
                       <TableRow key={s.id as string}>
-                        <TableCell>{(s.userId as string)?.slice(0, 8)}...</TableCell>
+                        <TableCell>{(s.studentName as string) || 'Student'}</TableCell>
                         <TableCell>{s.score as number}/{s.total as number}</TableCell>
                         <TableCell><Chip label={`${s.accuracy}%`} size="small" color={(s.accuracy as number) >= 80 ? 'success' : (s.accuracy as number) >= 50 ? 'warning' : 'error'} /></TableCell>
                         <TableCell>{s.timeTaken as number} min</TableCell>
