@@ -89,7 +89,11 @@ export default function StudentDashboard() {
         const list: TestItem[] = [];
         snap.forEach(doc => list.push({ id: doc.id, ...doc.data() } as TestItem));
         return list;
-      } catch {
+      } catch (err: unknown) {
+        const errMsg = err instanceof Error ? err.message : String(err);
+        if (!errMsg.includes('currently building')) {
+          console.error('Error loading published tests (falling back):', err);
+        }
         const fallbackSnap = await getDocs(
           query(collection(db, 'tests'), orderBy('createdAt', 'desc'), limit(20))
         );

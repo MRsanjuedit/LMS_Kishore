@@ -85,8 +85,13 @@ export default function TestsPage() {
         setCursor(docs.length > 0 ? docs[docs.length - 1] : null);
         setHasMore(docs.length === TESTS_PAGE_SIZE);
         setCategories(catList);
-      } catch (err) {
-        console.error('Error loading published tests (falling back):', err);
+      } catch (err: unknown) {
+        const errMsg = err instanceof Error ? err.message : String(err);
+        if (errMsg.includes('currently building')) {
+          console.warn('Firestore index still building — using fallback query until ready.');
+        } else {
+          console.error('Error loading published tests (falling back):', err);
+        }
         try {
           const [fallbackSnap, catList] = await Promise.all([
             getDocs(query(collection(db, 'tests'), orderBy('createdAt', 'desc'), limit(TESTS_PAGE_SIZE))),
