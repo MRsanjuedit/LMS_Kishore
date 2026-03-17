@@ -151,9 +151,6 @@ export default function ResourcesPage() {
                           {resource.description}
                         </Typography>
                       )}
-                      <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
-                        Shared by: {resource.createdByName || 'Instructor'}
-                      </Typography>
                       <Button
                         fullWidth
                         variant="contained"
