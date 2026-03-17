@@ -112,24 +112,24 @@ export default function InstructorTestsPage() {
                   <TableHead>
                     <TableRow>
                       <TableCell>Title</TableCell>
-                      <TableCell>Category</TableCell>
-                      <TableCell>Topic</TableCell>
-                      <TableCell>Duration</TableCell>
-                      <TableCell>Questions</TableCell>
-                      <TableCell>Status</TableCell>
-                      <TableCell>Created</TableCell>
-                      <TableCell>Actions</TableCell>
+                      <TableCell align="center">Category</TableCell>
+                      <TableCell align="center">Topic</TableCell>
+                      <TableCell align="center">Duration</TableCell>
+                      <TableCell align="center">Questions</TableCell>
+                      <TableCell align="center">Status</TableCell>
+                      <TableCell align="center">Created</TableCell>
+                      <TableCell align="center">Actions</TableCell>
                     </TableRow>
                   </TableHead>
                   <TableBody>
                     {tests.map(t => (
                       <TableRow key={t.id} hover>
-                        <TableCell><Typography fontWeight={600}>{t.title}</Typography></TableCell>
-                        <TableCell>{t.categoryName && <Chip label={t.categoryName} size="small" color="primary" variant="outlined" />}</TableCell>
-                        <TableCell>{t.topicName || '-'}</TableCell>
-                        <TableCell>{t.duration} min</TableCell>
-                        <TableCell>{t.questionCount}</TableCell>
-                        <TableCell>
+                        <TableCell sx={{ maxWidth: 260 }}><Typography fontWeight={600} noWrap>{t.title}</Typography></TableCell>
+                        <TableCell align="center">{t.categoryName ? <Chip label={t.categoryName} size="small" color="primary" variant="outlined" /> : '-'}</TableCell>
+                        <TableCell align="center">{t.topicName || '-'}</TableCell>
+                        <TableCell align="center">{t.duration} min</TableCell>
+                        <TableCell align="center">{t.questionCount}</TableCell>
+                        <TableCell align="center">
                           <Chip
                             label={t.status === 'draft' ? 'Draft' : 'Published'}
                             size="small"
@@ -137,22 +137,20 @@ export default function InstructorTestsPage() {
                             variant={t.status === 'draft' ? 'outlined' : 'filled'}
                           />
                         </TableCell>
-                        <TableCell>{t.createdAt?.toLocaleDateString() || '-'}</TableCell>
-                        <TableCell>
-                          <Button
-                            size="small"
-                            startIcon={<Visibility />}
-                            onClick={() => router.push(`/instructor/tests/${t.id}`)}
-                            sx={{ mr: 1 }}
-                          >
-                            View Report
-                          </Button>
-                          <IconButton size="small" onClick={() => router.push(`/instructor/tests/${t.id}`)}>
-                            <Visibility />
-                          </IconButton>
+                        <TableCell align="center">{t.createdAt?.toLocaleDateString() || '-'}</TableCell>
+                        <TableCell align="center">
+                          <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 0.5 }}>
+                            <Button
+                              size="small"
+                              startIcon={<Visibility />}
+                              onClick={() => router.push(`/instructor/tests/${t.id}`)}
+                            >
+                              View Report
+                            </Button>
                           <IconButton size="small" color="error" onClick={() => setDeleteId(t.id)}>
                             <Delete />
                           </IconButton>
+                          </Box>
                         </TableCell>
                       </TableRow>
                     ))}

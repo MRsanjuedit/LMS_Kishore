@@ -5,9 +5,9 @@ import { useParams, useRouter } from 'next/navigation';
 import {
   Box, Typography, Card, CardContent, Grid, Chip, Button,
   Table, TableBody, TableCell, TableContainer, TableHead,
-  TableRow, Paper, Skeleton, Divider,
+  TableRow, Paper, Skeleton,
 } from '@mui/material';
-import { ArrowBack, Edit, People, Quiz } from '@mui/icons-material';
+import { ArrowBack } from '@mui/icons-material';
 import { motion as m } from 'framer-motion';
 import { doc, getDoc, collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
@@ -18,7 +18,6 @@ export default function InstructorTestDetailPage() {
   const { testId } = useParams();
   const router = useRouter();
   const [test, setTest] = useState<Record<string, unknown> | null>(null);
-  const [questions, setQuestions] = useState<Array<Record<string, unknown>>>([]);
   const [submissions, setSubmissions] = useState<Array<Record<string, unknown>>>([]);
   const [loading, setLoading] = useState(true);
 
@@ -28,11 +27,6 @@ export default function InstructorTestDetailPage() {
       try {
         const testDoc = await getDoc(doc(db, 'tests', testId as string));
         if (testDoc.exists()) setTest({ id: testDoc.id, ...testDoc.data() });
-
-        const qSnap = await getDocs(query(collection(db, 'questions'), where('testId', '==', testId)));
-        const qs: Array<Record<string, unknown>> = [];
-        qSnap.forEach(d => qs.push({ id: d.id, ...d.data() }));
-        setQuestions(qs);
 
         const sSnap = await getDocs(query(collection(db, 'submissions'), where('testId', '==', testId)));
         const ss: Array<Record<string, unknown>> = [];
@@ -63,7 +57,7 @@ export default function InstructorTestDetailPage() {
 
           <Grid container spacing={3} sx={{ mb: 3 }}>
             {[
-              { label: 'Questions', value: questions.length, color: '#6C63FF' },
+              { label: 'Questions', value: Number(test?.questionCount || 0), color: '#6C63FF' },
               { label: 'Submissions', value: submissions.length, color: '#10B981' },
               { label: 'Avg Score', value: `${avgScore}%`, color: '#F59E0B' },
             ].map((s, i) => (
@@ -78,30 +72,16 @@ export default function InstructorTestDetailPage() {
             ))}
           </Grid>
 
-          {/* Questions */}
-          <Typography variant="h5" sx={{ mb: 2 }}>Questions</Typography>
-          {questions.map((q, i) => (
-            <Card key={q.id as string} sx={{ mb: 1.5 }}>
-              <CardContent sx={{ py: 1.5, px: 2 }}>
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <Typography fontWeight={600}>Q{i + 1}. {q.questionText as string}</Typography>
-                  <Box sx={{ display: 'flex', gap: 0.5 }}>
-                    <Chip label={q.difficulty as string} size="small"
-                      color={(q.difficulty as string) === 'Easy' ? 'success' : (q.difficulty as string) === 'Hard' ? 'error' : 'warning'} />
-                    <Chip label={q.type as string} size="small" variant="outlined" />
-                  </Box>
-                </Box>
-                <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-                  Answer: {q.correctAnswer as string}
-                </Typography>
-              </CardContent>
-            </Card>
-          ))}
-
           {/* Submissions */}
-          {submissions.length > 0 && (
-            <Box sx={{ mt: 4 }}>
-              <Typography variant="h5" sx={{ mb: 2 }}>Student Submissions</Typography>
+          <Box sx={{ mt: 1 }}>
+              <Typography variant="h5" sx={{ mb: 2 }}>Student Reports</Typography>
+              {submissions.length === 0 ? (
+                <Card>
+                  <CardContent sx={{ textAlign: 'center', py: 4 }}>
+                    <Typography color="text.secondary">No student attempts yet for this test.</Typography>
+                  </CardContent>
+                </Card>
+              ) : (
               <TableContainer component={Paper}>
                 <Table>
                   <TableHead>
@@ -124,8 +104,8 @@ export default function InstructorTestDetailPage() {
                   </TableBody>
                 </Table>
               </TableContainer>
+              )}
             </Box>
-          )}
         </Box>
       </DashboardLayout>
     </ProtectedRoute>
