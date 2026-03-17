@@ -87,6 +87,14 @@ export default function LoginPage() {
               Don&apos;t have an account?{' '}
               <MuiLink href="/signup" sx={{ fontWeight: 600, cursor: 'pointer' }}>Sign Up</MuiLink>
             </Typography>
+            <Typography textAlign="center" color="text.secondary" variant="body2" sx={{ mt: 1 }}>
+              Need instructor access?{' '}
+              <MuiLink href="/register-instructor" sx={{ fontWeight: 600, cursor: 'pointer' }}>Register as Instructor</MuiLink>
+            </Typography>
+            <Typography textAlign="center" color="text.secondary" variant="body2" sx={{ mt: 0.5 }}>
+              Admin setup?{' '}
+              <MuiLink href="/create-admin" sx={{ fontWeight: 600, cursor: 'pointer' }}>Create Admin</MuiLink>
+            </Typography>
           </CardContent>
         </Card>
       </m.div>
