@@ -35,6 +35,11 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType>({} as AuthContextType);
 const PROFILE_CACHE_PREFIX = 'edutech_profile_';
 
+const isUserRole = (value: unknown): value is UserRole =>
+  value === 'student' || value === 'instructor' || value === 'admin';
+
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
 const getCachedProfile = (uid: string): UserProfile | null => {
   if (typeof window === 'undefined') return null;
   try {
@@ -61,6 +66,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   const fetchProfile = useCallback(async (firebaseUser: User) => {
+    const cachedProfile = getCachedProfile(firebaseUser.uid);
     const fallbackProfile: UserProfile = {
       uid: firebaseUser.uid,
       name: firebaseUser.displayName || 'User',
@@ -81,12 +87,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // Do NOT auto-create user documents here.
       // Account provisioning flows (signup/instructor setup) are responsible for writing
       // the role; auto-creating can race and incorrectly lock role as student.
-      setProfile(fallbackProfile);
-      setCachedProfile(fallbackProfile);
+      setProfile(cachedProfile || fallbackProfile);
     } catch (err) {
       console.error('Failed to fetch user profile, using fallback profile:', err);
-      setProfile(fallbackProfile);
-      setCachedProfile(fallbackProfile);
+      setProfile(cachedProfile || fallbackProfile);
     }
   }, []);
 
@@ -109,15 +113,39 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signIn = async (email: string, password: string) => {
     const cred = await signInWithEmailAndPassword(auth, email, password);
-    // Fetch role immediately so the caller can redirect correctly
-    try {
-      const snap = await getDoc(doc(db, 'users', cred.user.uid));
-      if (snap.exists()) {
-        return (snap.data() as UserProfile).role;
+    // Fetch role immediately so the caller can redirect correctly.
+    // In production, Firestore read can briefly fail right after auth while token claims propagate.
+    for (let attempt = 0; attempt < 4; attempt += 1) {
+      try {
+        if (attempt > 0) {
+          await cred.user.getIdToken(true);
+          await sleep(200 * attempt);
+        }
+        const snap = await getDoc(doc(db, 'users', cred.user.uid));
+        if (snap.exists()) {
+          const data = snap.data() as Partial<UserProfile>;
+          const resolvedRole: UserRole = isUserRole(data.role) ? data.role : 'student';
+          const resolvedProfile: UserProfile = {
+            uid: cred.user.uid,
+            name: data.name || cred.user.displayName || 'User',
+            email: data.email || cred.user.email || '',
+            role: resolvedRole,
+          };
+          setProfile(resolvedProfile);
+          setCachedProfile(resolvedProfile);
+          return resolvedRole;
+        }
+      } catch {
+        // retry below
       }
-    } catch {
-      // ignore; profile will load via onAuthStateChanged
     }
+
+    const cached = getCachedProfile(cred.user.uid);
+    if (cached && isUserRole(cached.role)) {
+      setProfile(cached);
+      return cached.role;
+    }
+
     return 'student';
   };
 
