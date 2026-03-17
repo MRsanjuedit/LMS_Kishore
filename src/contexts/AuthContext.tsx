@@ -40,6 +40,13 @@ const isUserRole = (value: unknown): value is UserRole =>
 
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
+const buildUserProfile = (firebaseUser: User, data?: Partial<UserProfile>): UserProfile => ({
+  uid: firebaseUser.uid,
+  name: data?.name || firebaseUser.displayName || 'User',
+  email: data?.email || firebaseUser.email || '',
+  role: isUserRole(data?.role) ? data.role : 'student',
+});
+
 const getCachedProfile = (uid: string): UserProfile | null => {
   if (typeof window === 'undefined') return null;
   try {
@@ -65,20 +72,32 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
 
+  const getServerProfileWithRetry = useCallback(async (firebaseUser: User): Promise<UserProfile | null> => {
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      try {
+        if (attempt > 0) {
+          await firebaseUser.getIdToken(true);
+          await sleep(250 * attempt);
+        }
+        const snap = await getDoc(doc(db, 'users', firebaseUser.uid));
+        if (snap.exists()) {
+          return buildUserProfile(firebaseUser, snap.data() as Partial<UserProfile>);
+        }
+        return null;
+      } catch {
+        // retry loop
+      }
+    }
+    return null;
+  }, []);
+
   const fetchProfile = useCallback(async (firebaseUser: User) => {
     const cachedProfile = getCachedProfile(firebaseUser.uid);
-    const fallbackProfile: UserProfile = {
-      uid: firebaseUser.uid,
-      name: firebaseUser.displayName || 'User',
-      email: firebaseUser.email || '',
-      role: 'student',
-    };
+    const fallbackProfile = buildUserProfile(firebaseUser);
 
     try {
-      const userRef = doc(db, 'users', firebaseUser.uid);
-      const snap = await getDoc(userRef);
-      if (snap.exists()) {
-        const serverProfile = snap.data() as UserProfile;
+      const serverProfile = await getServerProfileWithRetry(firebaseUser);
+      if (serverProfile) {
         setProfile(serverProfile);
         setCachedProfile(serverProfile);
         return;
@@ -92,7 +111,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       console.error('Failed to fetch user profile, using fallback profile:', err);
       setProfile(cachedProfile || fallbackProfile);
     }
-  }, []);
+  }, [getServerProfileWithRetry]);
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (u) => {
@@ -115,29 +134,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const cred = await signInWithEmailAndPassword(auth, email, password);
     // Fetch role immediately so the caller can redirect correctly.
     // In production, Firestore read can briefly fail right after auth while token claims propagate.
-    for (let attempt = 0; attempt < 4; attempt += 1) {
-      try {
-        if (attempt > 0) {
-          await cred.user.getIdToken(true);
-          await sleep(200 * attempt);
-        }
-        const snap = await getDoc(doc(db, 'users', cred.user.uid));
-        if (snap.exists()) {
-          const data = snap.data() as Partial<UserProfile>;
-          const resolvedRole: UserRole = isUserRole(data.role) ? data.role : 'student';
-          const resolvedProfile: UserProfile = {
-            uid: cred.user.uid,
-            name: data.name || cred.user.displayName || 'User',
-            email: data.email || cred.user.email || '',
-            role: resolvedRole,
-          };
-          setProfile(resolvedProfile);
-          setCachedProfile(resolvedProfile);
-          return resolvedRole;
-        }
-      } catch {
-        // retry below
-      }
+    const serverProfile = await getServerProfileWithRetry(cred.user);
+    if (serverProfile) {
+      setProfile(serverProfile);
+      setCachedProfile(serverProfile);
+      return serverProfile.role;
     }
 
     const cached = getCachedProfile(cred.user.uid);
