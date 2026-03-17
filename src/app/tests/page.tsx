@@ -20,7 +20,7 @@ import {
   type QueryDocumentSnapshot,
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import { getCachedOrFetch } from '@/lib/dataCache';
+import { getCachedOrFetch, getSWRData } from '@/lib/dataCache';
 import DashboardLayout from '@/components/DashboardLayout';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import { useRouter } from 'next/navigation';
@@ -44,7 +44,8 @@ interface CategoryItem {
 
 const container = { hidden: {}, show: { transition: { staggerChildren: 0.06 } } };
 const item = { hidden: { opacity: 0, y: 20 }, show: { opacity: 1, y: 0 } };
-const TESTS_PAGE_SIZE = 60;
+const TESTS_PAGE_SIZE = 24;
+const TESTS_CACHE_TTL = 3 * 60 * 1000;
 const CATEGORY_CACHE_TTL = 10 * 60 * 1000;
 
 export default function TestsPage() {
@@ -60,48 +61,32 @@ export default function TestsPage() {
 
   useEffect(() => {
     const load = async () => {
-      try {
-        const [testsSnap, catList] = await Promise.all([
-          getDocs(
+      const testsFetcher = async (): Promise<{ tests: TestItem[]; cursor: QueryDocumentSnapshot<DocumentData> | null; hasMore: boolean }> => {
+        try {
+          const testsSnap = await getDocs(
             query(
               collection(db, 'tests'),
               where('status', '==', 'published'),
               orderBy('createdAt', 'desc'),
               limit(TESTS_PAGE_SIZE)
             )
-          ),
-          getCachedOrFetch('categories_all', CATEGORY_CACHE_TTL, async () => {
-            const catsSnap = await getDocs(collection(db, 'categories'));
-            const cats: CategoryItem[] = [];
-            catsSnap.forEach(doc => cats.push({ id: doc.id, ...doc.data() } as CategoryItem));
-            return cats;
-          }),
-        ]);
-
-        const testList: TestItem[] = [];
-        testsSnap.forEach(doc => testList.push({ id: doc.id, ...doc.data() } as TestItem));
-        setTests(testList);
-        const docs = testsSnap.docs;
-        setCursor(docs.length > 0 ? docs[docs.length - 1] : null);
-        setHasMore(docs.length === TESTS_PAGE_SIZE);
-        setCategories(catList);
-      } catch (err: unknown) {
-        const errMsg = err instanceof Error ? err.message : String(err);
-        if (errMsg.includes('currently building')) {
-          console.warn('Firestore index still building — using fallback query until ready.');
-        } else {
-          console.error('Error loading published tests (falling back):', err);
-        }
-        try {
-          const [fallbackSnap, catList] = await Promise.all([
-            getDocs(query(collection(db, 'tests'), orderBy('createdAt', 'desc'), limit(TESTS_PAGE_SIZE))),
-            getCachedOrFetch('categories_all', CATEGORY_CACHE_TTL, async () => {
-              const catsSnap = await getDocs(collection(db, 'categories'));
-              const cats: CategoryItem[] = [];
-              catsSnap.forEach(doc => cats.push({ id: doc.id, ...doc.data() } as CategoryItem));
-              return cats;
-            }),
-          ]);
+          );
+          const testList: TestItem[] = [];
+          testsSnap.forEach(doc => testList.push({ id: doc.id, ...doc.data() } as TestItem));
+          const docs = testsSnap.docs;
+          return {
+            tests: testList,
+            cursor: docs.length > 0 ? docs[docs.length - 1] : null,
+            hasMore: docs.length === TESTS_PAGE_SIZE,
+          };
+        } catch (err: unknown) {
+          const errMsg = err instanceof Error ? err.message : String(err);
+          if (errMsg.includes('currently building')) {
+            console.warn('Firestore index still building — using fallback query until ready.');
+          } else {
+            console.error('Error loading published tests (falling back):', err);
+          }
+          const fallbackSnap = await getDocs(query(collection(db, 'tests'), orderBy('createdAt', 'desc'), limit(TESTS_PAGE_SIZE)));
           const publishedOnly: TestItem[] = [];
           fallbackSnap.forEach((docSnap) => {
             const data = docSnap.data() as TestItem & { status?: string };
@@ -110,13 +95,52 @@ export default function TestsPage() {
               publishedOnly.push({ id: docSnap.id, ...rest });
             }
           });
-          setTests(publishedOnly);
-          setCursor(fallbackSnap.docs.length > 0 ? fallbackSnap.docs[fallbackSnap.docs.length - 1] : null);
-          setHasMore(fallbackSnap.docs.length === TESTS_PAGE_SIZE);
-          setCategories(catList);
-        } catch (fallbackErr) {
-          console.error('Error loading tests:', fallbackErr);
+          return {
+            tests: publishedOnly,
+            cursor: fallbackSnap.docs.length > 0 ? fallbackSnap.docs[fallbackSnap.docs.length - 1] : null,
+            hasMore: fallbackSnap.docs.length === TESTS_PAGE_SIZE,
+          };
         }
+      };
+
+      const categoriesFetcher = async (): Promise<CategoryItem[]> => getCachedOrFetch('categories_all', CATEGORY_CACHE_TTL, async () => {
+        const catsSnap = await getDocs(collection(db, 'categories'));
+        const cats: CategoryItem[] = [];
+        catsSnap.forEach(doc => cats.push({ id: doc.id, ...doc.data() } as CategoryItem));
+        return cats;
+      });
+
+      const applyTests = (payload: { tests: TestItem[]; cursor: QueryDocumentSnapshot<DocumentData> | null; hasMore: boolean }) => {
+        setTests(payload.tests);
+        setCursor(payload.cursor);
+        setHasMore(payload.hasMore);
+      };
+
+      const cachedTests = getSWRData('tests_page_latest', TESTS_CACHE_TTL, testsFetcher, applyTests);
+      const cachedCategories = getSWRData('categories_all', CATEGORY_CACHE_TTL, categoriesFetcher, setCategories);
+
+      if (cachedTests !== null) applyTests(cachedTests);
+      if (cachedCategories !== null) setCategories(cachedCategories);
+
+      if (cachedTests !== null && cachedCategories !== null) {
+        setLoading(false);
+        return;
+      }
+
+      try {
+        const [testsData, catList] = await Promise.all([
+          cachedTests === null
+            ? getCachedOrFetch('tests_page_latest', TESTS_CACHE_TTL, testsFetcher)
+            : Promise.resolve(cachedTests),
+          cachedCategories === null
+            ? categoriesFetcher()
+            : Promise.resolve(cachedCategories),
+        ]);
+
+        applyTests(testsData);
+        setCategories(catList);
+      } catch (fallbackErr) {
+        console.error('Error loading tests:', fallbackErr);
       }
       setLoading(false);
     };

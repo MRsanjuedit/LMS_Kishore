@@ -3,18 +3,31 @@ type CacheEnvelope<T> = {
   data: T;
 };
 
-function readEnvelope<T>(key: string): CacheEnvelope<T> | null {
+function readFromStorage<T>(storage: Storage | null, key: string): CacheEnvelope<T> | null {
+  if (!storage) return null;
   try {
-    const raw = sessionStorage.getItem(key);
+    const raw = storage.getItem(key);
     if (raw) return JSON.parse(raw) as CacheEnvelope<T>;
   } catch {}
   return null;
 }
 
-function writeEnvelope<T>(key: string, data: T): void {
+function writeToStorage<T>(storage: Storage | null, key: string, data: T): void {
+  if (!storage) return;
   try {
-    sessionStorage.setItem(key, JSON.stringify({ timestamp: Date.now(), data }));
+    storage.setItem(key, JSON.stringify({ timestamp: Date.now(), data }));
   } catch {}
+}
+
+function readEnvelope<T>(key: string): CacheEnvelope<T> | null {
+  if (typeof window === 'undefined') return null;
+  return readFromStorage<T>(window.localStorage, key) || readFromStorage<T>(window.sessionStorage, key);
+}
+
+function writeEnvelope<T>(key: string, data: T): void {
+  if (typeof window === 'undefined') return;
+  writeToStorage(window.localStorage, key, data);
+  writeToStorage(window.sessionStorage, key, data);
 }
 
 /**
@@ -73,6 +86,9 @@ export function getSWRData<T>(
 
 export function invalidateCacheKey(key: string) {
   if (typeof window === 'undefined') return;
+  try {
+    localStorage.removeItem(key);
+  } catch {}
   try {
     sessionStorage.removeItem(key);
   } catch {}
