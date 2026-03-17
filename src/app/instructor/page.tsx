@@ -126,8 +126,8 @@ export default function InstructorDashboard() {
                         {[
                           { label: 'Create New Test', icon: <Add />, path: '/instructor/create-test' },
                           { label: 'View My Tests', icon: <Quiz />, path: '/instructor/tests' },
+                          { label: 'Upload Free Resources', icon: <Add />, path: '/instructor/resources' },
                           { label: 'View Analytics', icon: <Analytics />, path: '/instructor/analytics' },
-                          { label: 'AI Question Generator', icon: <Quiz />, path: '/instructor/ai-generator' },
                         ].map((a, i) => (
                           <Button key={i} fullWidth variant="outlined" startIcon={a.icon}
                             endIcon={<ArrowForward />} onClick={() => router.push(a.path)}

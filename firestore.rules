@@ -76,5 +76,14 @@ service cloud.firestore {
       allow read: if isAuth();
       allow create, update, delete: if hasRole('admin');
     }
+
+    // Free resources collection (YouTube videos/playlists)
+    match /resources/{resourceId} {
+      allow read: if isAuth();
+      allow create: if isAuth() && (hasRole('instructor') || hasRole('admin'));
+      allow update, delete: if isAuth() && (
+        resource.data.createdBy == request.auth.uid || hasRole('admin')
+      );
+    }
   }
 }

@@ -40,6 +40,7 @@ import {
   BarChart,
   AutoAwesome,
   Leaderboard,
+  VideoLibrary,
 } from '@mui/icons-material';
 import { motion as m, AnimatePresence } from 'framer-motion';
 import { useAuth } from '@/contexts/AuthContext';
@@ -52,6 +53,7 @@ const studentNav = [
   { label: 'My Results', path: '/results', icon: <Analytics /> },
   { label: 'Analytics', path: '/analytics', icon: <Analytics /> },
   { label: 'AI Insights', path: '/ai-insights', icon: <Psychology /> },
+  { label: 'Free Resources', path: '/resources', icon: <VideoLibrary /> },
   { label: 'Profile', path: '/profile', icon: <Person /> },
   { label: 'Settings', path: '/settings', icon: <Settings /> },
 ];
@@ -60,6 +62,7 @@ const instructorNav = [
   { label: 'Dashboard', path: '/instructor', icon: <Dashboard />, section: 'Overview' },
   { label: 'Create Test', path: '/instructor/create-test', icon: <NoteAdd />, section: 'Management' },
   { label: 'My Tests', path: '/instructor/tests', icon: <Assignment /> },
+  { label: 'Free Resources', path: '/instructor/resources', icon: <VideoLibrary /> },
   { label: 'Student Analytics', path: '/instructor/analytics', icon: <Leaderboard />, section: 'Analysis' },
   { label: 'AI Reports', path: '/instructor/ai-reports', icon: <AutoAwesome /> },
   { label: 'Profile', path: '/profile', icon: <Person />, section: 'Account' },
