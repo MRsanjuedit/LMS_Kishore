@@ -27,8 +27,8 @@ interface AuthContextType {
   profile: UserProfile | null;
   loading: boolean;
   signIn: (email: string, password: string) => Promise<UserRole>;
-  signUp: (email: string, password: string, name: string, role: UserRole) => Promise<void>;
-    createAdmin: (email: string, password: string, name: string) => Promise<void>;
+  signUp: (email: string, password: string, name: string) => Promise<void>;
+  createInstructor: (email: string, password: string, name: string) => Promise<void>;
   signOut: () => Promise<void>;
 }
 
@@ -122,14 +122,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return 'student';
   };
 
-  const signUp = async (email: string, password: string, name: string, role: UserRole) => {
+  const signUp = async (email: string, password: string, name: string) => {
     const cred = await createUserWithEmailAndPassword(auth, email, password);
     await updateProfile(cred.user, { displayName: name });
     const userProfile: UserProfile = {
       uid: cred.user.uid,
       name,
       email,
-      role,
+      role: 'student',
     };
     await setDoc(doc(db, 'users', cred.user.uid), {
       ...userProfile,
@@ -138,15 +138,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setProfile(userProfile);
   };
 
-  const createAdmin = async (email: string, password: string, name: string) => {
+  const createInstructor = async (email: string, password: string, name: string) => {
     const cred = await createUserWithEmailAndPassword(auth, email, password);
     await updateProfile(cred.user, { displayName: name });
-    const adminProfile: UserProfile = { uid: cred.user.uid, name, email, role: 'admin' };
+    const instructorProfile: UserProfile = { uid: cred.user.uid, name, email, role: 'instructor' };
     await setDoc(doc(db, 'users', cred.user.uid), {
-      ...adminProfile,
+      ...instructorProfile,
       createdAt: serverTimestamp(),
     });
-    // Sign out immediately — admin should log in explicitly
+    // Sign out immediately — instructor should log in explicitly
     await firebaseSignOut(auth);
     setProfile(null);
     setUser(null);
@@ -158,7 +158,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, profile, loading, signIn, signUp, createAdmin, signOut }}>
+    <AuthContext.Provider value={{ user, profile, loading, signIn, signUp, createInstructor, signOut }}>
       {children}
     </AuthContext.Provider>
   );

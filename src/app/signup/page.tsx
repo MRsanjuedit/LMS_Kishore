@@ -30,7 +30,7 @@ export default function SignupPage() {
     }
     setLoading(true);
     try {
-      await signUp(email, password, name, 'student');
+      await signUp(email, password, name);
       toast.success('Account created successfully!');
       router.push('/dashboard');
     } catch (err: unknown) {
@@ -95,7 +95,7 @@ export default function SignupPage() {
             </Typography>
             <Typography textAlign="center" color="text.secondary" variant="body2">
               Are you an instructor?{' '}
-              <MuiLink href="/register-instructor" sx={{ fontWeight: 600, cursor: 'pointer' }}>Register here</MuiLink>
+              <MuiLink href="/create-admin" sx={{ fontWeight: 600, cursor: 'pointer' }}>Use instructor setup</MuiLink>
             </Typography>
           </CardContent>
         </Card>

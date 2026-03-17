@@ -9,7 +9,7 @@ import {
 } from '@mui/material';
 import {
   Visibility, VisibilityOff, Email, Lock, Person,
-  AdminPanelSettings, Key,
+  School, Key,
 } from '@mui/icons-material';
 import { motion as m } from 'framer-motion';
 import { useAuth } from '@/contexts/AuthContext';
@@ -18,7 +18,7 @@ import toast from 'react-hot-toast';
 const ADMIN_PIN = '22pa1a5757';
 
 export default function CreateAdminPage() {
-  const { createAdmin } = useAuth();
+  const { createInstructor } = useAuth();
   const router = useRouter();
 
   // Step 0 = PIN, Step 1 = credentials
@@ -53,9 +53,9 @@ export default function CreateAdminPage() {
     }
     setLoading(true);
     try {
-      await createAdmin(email, password, name);
+      await createInstructor(email, password, name);
       setSuccess(true);
-      toast.success('Admin account created successfully!');
+      toast.success('Instructor account created successfully!');
     } catch (err: unknown) {
       const code = (err as { code?: string }).code || '';
       if (code === 'auth/email-already-in-use') {
@@ -65,7 +65,7 @@ export default function CreateAdminPage() {
       } else if (code === 'auth/invalid-email') {
         setError('Invalid email address.');
       } else {
-        setError((err as Error).message || 'Failed to create admin account.');
+        setError((err as Error).message || 'Failed to create instructor account.');
       }
     } finally {
       setLoading(false);
@@ -92,9 +92,9 @@ export default function CreateAdminPage() {
                 background: 'linear-gradient(135deg, #6C63FF, #FF6584)',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
               }}>
-                <AdminPanelSettings sx={{ color: '#fff', fontSize: 30 }} />
+                <School sx={{ color: '#fff', fontSize: 30 }} />
               </Box>
-              <Typography variant="h5" fontWeight={700}>Admin Setup</Typography>
+              <Typography variant="h5" fontWeight={700}>Instructor Setup</Typography>
               <Typography color="text.secondary" variant="body2" sx={{ mt: 0.5 }}>
                 Restricted to authorized personnel only
               </Typography>
@@ -105,7 +105,7 @@ export default function CreateAdminPage() {
                 <StepLabel>Verify PIN</StepLabel>
               </Step>
               <Step>
-                <StepLabel>Create Admin</StepLabel>
+                <StepLabel>Create Instructor</StepLabel>
               </Step>
             </Stepper>
 
@@ -113,12 +113,12 @@ export default function CreateAdminPage() {
             {step === 0 && (
               <form onSubmit={handlePinSubmit}>
                 <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                  Enter the admin setup PIN to continue.
+                  Enter the setup PIN to continue.
                 </Typography>
                 {pinError && <Alert severity="error" sx={{ mb: 2 }}>{pinError}</Alert>}
                 <TextField
                   fullWidth
-                  label="Admin PIN"
+                  label="Setup PIN"
                   type="password"
                   value={pin}
                   onChange={e => { setPin(e.target.value); setPinError(''); }}
@@ -142,7 +142,7 @@ export default function CreateAdminPage() {
             {step === 1 && !success && (
               <form onSubmit={handleCreate}>
                 <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                  Create the admin account. All other sign-ups are assigned the <strong>student</strong> role.
+                  Create the instructor account. All direct sign-ups are assigned the <strong>student</strong> role.
                 </Typography>
                 {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
                 <TextField
@@ -179,7 +179,7 @@ export default function CreateAdminPage() {
                   disabled={loading}
                   sx={{ background: 'linear-gradient(135deg, #6C63FF, #8B85FF)', mb: 2 }}
                 >
-                  {loading ? 'Creating Admin...' : 'Create Admin Account'}
+                  {loading ? 'Creating Instructor...' : 'Create Instructor Account'}
                 </Button>
               </form>
             )}
@@ -192,10 +192,10 @@ export default function CreateAdminPage() {
                   background: 'linear-gradient(135deg, #10B981, #34D399)',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                 }}>
-                  <AdminPanelSettings sx={{ color: '#fff', fontSize: 34 }} />
+                  <School sx={{ color: '#fff', fontSize: 34 }} />
                 </Box>
                 <Alert severity="success" sx={{ mb: 3 }}>
-                  Admin account for <strong>{email}</strong> has been created successfully!
+                  Instructor account for <strong>{email}</strong> has been created successfully!
                 </Alert>
                 <Button
                   fullWidth variant="contained" size="large"

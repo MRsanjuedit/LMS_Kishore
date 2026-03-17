@@ -21,8 +21,18 @@ service cloud.firestore {
     // Users collection
     match /users/{userId} {
       allow read: if isAuth();
-      allow create: if isAuth() && request.auth.uid == userId;
-      allow update: if isAuth() && (request.auth.uid == userId || hasRole('admin'));
+      // Client can create only student/instructor for itself (admin creation disabled in app)
+      allow create: if isAuth()
+        && request.auth.uid == userId
+        && request.resource.data.role in ['student', 'instructor'];
+
+      // User can update own profile but cannot change own role
+      // Admin can update any profile but cannot promote another admin
+      allow update: if isAuth() && (
+        (request.auth.uid == userId && request.resource.data.role == resource.data.role)
+        ||
+        (hasRole('admin') && (request.resource.data.role != 'admin' || resource.data.role == 'admin'))
+      );
       allow delete: if hasRole('admin');
     }
 

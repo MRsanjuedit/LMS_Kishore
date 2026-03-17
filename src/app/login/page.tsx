@@ -89,11 +89,10 @@ export default function LoginPage() {
             </Typography>
             <Typography textAlign="center" color="text.secondary" variant="body2" sx={{ mt: 1 }}>
               Need instructor access?{' '}
-              <MuiLink href="/register-instructor" sx={{ fontWeight: 600, cursor: 'pointer' }}>Register as Instructor</MuiLink>
+              <MuiLink href="/create-admin" sx={{ fontWeight: 600, cursor: 'pointer' }}>Instructor Setup</MuiLink>
             </Typography>
             <Typography textAlign="center" color="text.secondary" variant="body2" sx={{ mt: 0.5 }}>
-              Admin setup?{' '}
-              <MuiLink href="/create-admin" sx={{ fontWeight: 600, cursor: 'pointer' }}>Create Admin</MuiLink>
+              Admin account creation is disabled in app.
             </Typography>
           </CardContent>
         </Card>

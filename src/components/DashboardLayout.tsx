@@ -52,7 +52,7 @@ const studentNav = [
   { label: 'My Results', path: '/results', icon: <Analytics /> },
   { label: 'Analytics', path: '/analytics', icon: <Analytics /> },
   { label: 'AI Insights', path: '/ai-insights', icon: <Psychology /> },
-  { label: 'Become Instructor', path: '/register-instructor', icon: <NoteAdd /> },
+  { label: 'Become Instructor', path: '/create-admin', icon: <NoteAdd /> },
   { label: 'Profile', path: '/profile', icon: <Person /> },
   { label: 'Settings', path: '/settings', icon: <Settings /> },
 ];
