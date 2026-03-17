@@ -7,7 +7,7 @@ import {
   Table, TableBody, TableCell, TableContainer, TableHead,
   TableRow, Paper, Skeleton,
 } from '@mui/material';
-import { ArrowBack } from '@mui/icons-material';
+import { ArrowBack, Download } from '@mui/icons-material';
 import { motion as m } from 'framer-motion';
 import { doc, getDoc, collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
@@ -64,6 +64,52 @@ export default function InstructorTestDetailPage() {
     ? Math.round(submissions.reduce((s, x) => s + (x.accuracy as number || 0), 0) / submissions.length)
     : 0;
 
+  const formatSubmittedAt = (value: unknown) => {
+    if (!value) return '-';
+    if (value instanceof Date) return value.toLocaleString();
+    if (typeof value === 'object' && value !== null && 'toDate' in value && typeof (value as { toDate: () => Date }).toDate === 'function') {
+      return (value as { toDate: () => Date }).toDate().toLocaleString();
+    }
+    return '-';
+  };
+
+  const handleDownloadExcel = () => {
+    if (submissions.length === 0) return;
+
+    const headers = ['Student Name', 'Student ID', 'Score', 'Total', 'Accuracy (%)', 'Time Taken (min)', 'Submitted At'];
+    const rows = submissions.map((s) => [
+      String((s.studentName as string) || 'Student'),
+      String((s.userId as string) || ''),
+      String((s.score as number) || 0),
+      String((s.total as number) || 0),
+      String((s.accuracy as number) || 0),
+      String((s.timeTaken as number) || 0),
+      formatSubmittedAt(s.createdAt),
+    ]);
+
+    const tableHtml = `
+      <table>
+        <thead><tr>${headers.map(h => `<th>${h}</th>`).join('')}</tr></thead>
+        <tbody>
+          ${rows.map(r => `<tr>${r.map(v => `<td>${String(v).replace(/</g, '&lt;').replace(/>/g, '&gt;')}</td>`).join('')}</tr>`).join('')}
+        </tbody>
+      </table>
+    `;
+
+    const blob = new Blob([`\ufeff${tableHtml}`], {
+      type: 'application/vnd.ms-excel;charset=utf-8;',
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const safeTitle = ((test?.title as string) || 'test-report').replace(/[^a-z0-9-_ ]/gi, '').trim().replace(/\s+/g, '-').toLowerCase();
+    a.href = url;
+    a.download = `${safeTitle || 'test-report'}-student-report.xls`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
   if (loading) return (
     <ProtectedRoute allowedRoles={['instructor']}><DashboardLayout><Skeleton height={400} /></DashboardLayout></ProtectedRoute>
   );
@@ -94,7 +140,18 @@ export default function InstructorTestDetailPage() {
 
           {/* Submissions */}
           <Box sx={{ mt: 1 }}>
-              <Typography variant="h5" sx={{ mb: 2 }}>Student Reports</Typography>
+              <Box sx={{ mb: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+                <Typography variant="h5">Student Reports</Typography>
+                <Button
+                  variant="outlined"
+                  size="small"
+                  startIcon={<Download />}
+                  onClick={handleDownloadExcel}
+                  disabled={submissions.length === 0}
+                >
+                  Download Report (Excel)
+                </Button>
+              </Box>
               {submissions.length === 0 ? (
                 <Card>
                   <CardContent sx={{ textAlign: 'center', py: 4 }}>
@@ -110,6 +167,7 @@ export default function InstructorTestDetailPage() {
                       <TableCell>Score</TableCell>
                       <TableCell>Accuracy</TableCell>
                       <TableCell>Time</TableCell>
+                      <TableCell>Submitted At</TableCell>
                     </TableRow>
                   </TableHead>
                   <TableBody>
@@ -119,6 +177,7 @@ export default function InstructorTestDetailPage() {
                         <TableCell>{s.score as number}/{s.total as number}</TableCell>
                         <TableCell><Chip label={`${s.accuracy}%`} size="small" color={(s.accuracy as number) >= 80 ? 'success' : (s.accuracy as number) >= 50 ? 'warning' : 'error'} /></TableCell>
                         <TableCell>{s.timeTaken as number} min</TableCell>
+                        <TableCell>{formatSubmittedAt(s.createdAt)}</TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
