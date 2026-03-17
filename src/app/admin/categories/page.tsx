@@ -5,7 +5,7 @@ import {
   Box, Typography, Card, CardContent, Button, TextField,
   Grid, Table, TableBody, TableCell, TableContainer, TableHead,
   TableRow, Paper, IconButton, Dialog, DialogTitle, DialogContent,
-  DialogActions, Chip, Skeleton,
+  DialogActions, Chip, Skeleton, MenuItem,
 } from '@mui/material';
 import { Add, Delete, Edit, Category as CategoryIcon } from '@mui/icons-material';
 import { motion as m } from 'framer-motion';
@@ -234,7 +234,7 @@ export default function AdminCategoriesPage() {
                 onChange={e => setSelectedCatId(e.target.value)}
               >
                 {categories.map(c => (
-                  <option key={c.id} value={c.id}>{c.name}</option>
+                  <MenuItem key={c.id} value={c.id}>{c.name}</MenuItem>
                 ))}
               </TextField>
               <TextField
