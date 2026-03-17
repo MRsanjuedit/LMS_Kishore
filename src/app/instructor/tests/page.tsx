@@ -24,6 +24,7 @@ interface TestItem {
   topicName?: string;
   duration: number;
   questionCount: number;
+  status?: 'draft' | 'published';
   createdAt?: Date;
 }
 
@@ -46,6 +47,7 @@ export default function InstructorTestsPage() {
         list.push({
           id: d.id, title: data.title, categoryName: data.categoryName,
           topicName: data.topicName, duration: data.duration,
+          status: data.status || 'published',
           questionCount: data.questionCount || 0,
           createdAt: data.createdAt?.toDate(),
         });
@@ -114,6 +116,7 @@ export default function InstructorTestsPage() {
                       <TableCell>Topic</TableCell>
                       <TableCell>Duration</TableCell>
                       <TableCell>Questions</TableCell>
+                      <TableCell>Status</TableCell>
                       <TableCell>Created</TableCell>
                       <TableCell>Actions</TableCell>
                     </TableRow>
@@ -126,6 +129,14 @@ export default function InstructorTestsPage() {
                         <TableCell>{t.topicName || '-'}</TableCell>
                         <TableCell>{t.duration} min</TableCell>
                         <TableCell>{t.questionCount}</TableCell>
+                        <TableCell>
+                          <Chip
+                            label={t.status === 'draft' ? 'Draft' : 'Published'}
+                            size="small"
+                            color={t.status === 'draft' ? 'warning' : 'success'}
+                            variant={t.status === 'draft' ? 'outlined' : 'filled'}
+                          />
+                        </TableCell>
                         <TableCell>{t.createdAt?.toLocaleDateString() || '-'}</TableCell>
                         <TableCell>
                           <IconButton size="small" onClick={() => router.push(`/instructor/tests/${t.id}`)}>

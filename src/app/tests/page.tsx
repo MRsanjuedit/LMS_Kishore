@@ -12,6 +12,7 @@ import {
   collection,
   getDocs,
   query,
+  where,
   orderBy,
   limit,
   startAfter,
@@ -60,9 +61,15 @@ export default function TestsPage() {
   useEffect(() => {
     const load = async () => {
       try {
-        const testsQ = query(collection(db, 'tests'), orderBy('createdAt', 'desc'), limit(TESTS_PAGE_SIZE));
         const [testsSnap, catList] = await Promise.all([
-          getDocs(testsQ),
+          getDocs(
+            query(
+              collection(db, 'tests'),
+              where('status', '==', 'published'),
+              orderBy('createdAt', 'desc'),
+              limit(TESTS_PAGE_SIZE)
+            )
+          ),
           getCachedOrFetch('categories_all', CATEGORY_CACHE_TTL, async () => {
             const catsSnap = await getDocs(collection(db, 'categories'));
             const cats: CategoryItem[] = [];
@@ -79,7 +86,32 @@ export default function TestsPage() {
         setHasMore(docs.length === TESTS_PAGE_SIZE);
         setCategories(catList);
       } catch (err) {
-        console.error('Error loading tests:', err);
+        console.error('Error loading published tests (falling back):', err);
+        try {
+          const [fallbackSnap, catList] = await Promise.all([
+            getDocs(query(collection(db, 'tests'), orderBy('createdAt', 'desc'), limit(TESTS_PAGE_SIZE))),
+            getCachedOrFetch('categories_all', CATEGORY_CACHE_TTL, async () => {
+              const catsSnap = await getDocs(collection(db, 'categories'));
+              const cats: CategoryItem[] = [];
+              catsSnap.forEach(doc => cats.push({ id: doc.id, ...doc.data() } as CategoryItem));
+              return cats;
+            }),
+          ]);
+          const publishedOnly: TestItem[] = [];
+          fallbackSnap.forEach((docSnap) => {
+            const data = docSnap.data() as TestItem & { status?: string };
+            if ((data.status || 'published') === 'published') {
+              const { id: _ignoredId, ...rest } = data as TestItem & { id?: string; status?: string };
+              publishedOnly.push({ id: docSnap.id, ...rest });
+            }
+          });
+          setTests(publishedOnly);
+          setCursor(fallbackSnap.docs.length > 0 ? fallbackSnap.docs[fallbackSnap.docs.length - 1] : null);
+          setHasMore(fallbackSnap.docs.length === TESTS_PAGE_SIZE);
+          setCategories(catList);
+        } catch (fallbackErr) {
+          console.error('Error loading tests:', fallbackErr);
+        }
       }
       setLoading(false);
     };
@@ -92,6 +124,7 @@ export default function TestsPage() {
     try {
       const nextQ = query(
         collection(db, 'tests'),
+        where('status', '==', 'published'),
         orderBy('createdAt', 'desc'),
         startAfter(cursor),
         limit(TESTS_PAGE_SIZE)
@@ -106,7 +139,28 @@ export default function TestsPage() {
       }
       setHasMore(docs.length === TESTS_PAGE_SIZE);
     } catch (err) {
-      console.error('Error loading more tests:', err);
+      console.error('Error loading more published tests (fallback):', err);
+      try {
+        const fallbackSnap = await getDocs(
+          query(collection(db, 'tests'), orderBy('createdAt', 'desc'), startAfter(cursor), limit(TESTS_PAGE_SIZE))
+        );
+        const publishedOnly: TestItem[] = [];
+        fallbackSnap.forEach((docSnap) => {
+          const data = docSnap.data() as TestItem & { status?: string };
+          if ((data.status || 'published') === 'published') {
+            const { id: _ignoredId, ...rest } = data as TestItem & { id?: string; status?: string };
+            publishedOnly.push({ id: docSnap.id, ...rest });
+          }
+        });
+        setTests(prev => [...prev, ...publishedOnly]);
+        const docs = fallbackSnap.docs;
+        if (docs.length > 0) {
+          setCursor(docs[docs.length - 1]);
+        }
+        setHasMore(docs.length === TESTS_PAGE_SIZE);
+      } catch (fallbackErr) {
+        console.error('Error loading more tests:', fallbackErr);
+      }
     }
     setLoadingMore(false);
   };

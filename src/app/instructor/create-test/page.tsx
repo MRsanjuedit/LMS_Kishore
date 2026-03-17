@@ -43,6 +43,8 @@ interface TopicItem {
   name: string;
 }
 
+type TestStatus = 'draft' | 'published';
+
 const emptyQuestion: QuestionInput = {
   questionText: '',
   type: 'mcq',
@@ -70,6 +72,7 @@ export default function CreateTestPage() {
   const [topicName, setTopicName] = useState('');
   const [duration, setDuration] = useState(30);
   const [description, setDescription] = useState('');
+  const [status, setStatus] = useState<TestStatus>('published');
 
   // Questions
   const [questions, setQuestions] = useState<QuestionInput[]>([{ ...emptyQuestion }]);
@@ -123,13 +126,54 @@ export default function CreateTestPage() {
     setQuestions(prev => prev.filter((_, i) => i !== index));
   };
 
-  const handleSubmit = async () => {
-    if (!title || (!categoryId && !categoryName) || !duration) {
-      toast.error('Please fill in all test details');
+  const validateForPublish = (): boolean => {
+    if (!title.trim() || (!categoryId && !categoryName.trim()) || !duration || duration < 1) {
+      toast.error('Please complete test details before publishing');
+      return false;
+    }
+
+    if (questions.length === 0) {
+      toast.error('Please add at least one question');
+      return false;
+    }
+
+    for (const q of questions) {
+      if (!q.questionText.trim()) {
+        toast.error('Every question must have question text');
+        return false;
+      }
+
+      if (q.type === 'mcq') {
+        const validOptions = q.options.map(opt => opt.trim()).filter(Boolean);
+        if (validOptions.length < 2) {
+          toast.error('Each MCQ must have at least 2 options');
+          return false;
+        }
+        if (!q.correctAnswer.trim() || !validOptions.includes(q.correctAnswer.trim())) {
+          toast.error('Each MCQ must have a valid correct answer from options');
+          return false;
+        }
+      } else if (q.type === 'true_false') {
+        if (q.correctAnswer !== 'True' && q.correctAnswer !== 'False') {
+          toast.error('True/False questions must have True or False as answer');
+          return false;
+        }
+      } else if (!q.correctAnswer.trim()) {
+        toast.error('Short/Paragraph questions must have a correct answer');
+        return false;
+      }
+    }
+
+    return true;
+  };
+
+  const handleSubmit = async (submitStatus: TestStatus) => {
+    if (!title.trim()) {
+      toast.error('Title is required');
       return;
     }
-    if (questions.some(q => !q.questionText || !q.correctAnswer)) {
-      toast.error('All questions must have text and a correct answer');
+
+    if (submitStatus === 'published' && !validateForPublish()) {
       return;
     }
 
@@ -147,6 +191,7 @@ export default function CreateTestPage() {
         duration,
         description,
         questionCount: questions.length,
+        status: submitStatus,
         createdBy: user?.uid,
         createdAt: serverTimestamp(),
       });
@@ -167,7 +212,7 @@ export default function CreateTestPage() {
       });
       await batch.commit();
 
-      toast.success('Test created successfully!');
+      toast.success(submitStatus === 'draft' ? 'Draft saved successfully!' : 'Test published successfully!');
       router.push('/instructor/tests');
     } catch (err) {
       console.error('Error creating test:', err);
@@ -229,6 +274,15 @@ export default function CreateTestPage() {
                     <Grid size={{ xs: 12, sm: 6 }}>
                       <TextField fullWidth type="number" label="Duration (minutes)" value={duration}
                         onChange={e => setDuration(Number(e.target.value))} inputProps={{ min: 1 }} />
+                    </Grid>
+                    <Grid size={{ xs: 12, sm: 6 }}>
+                      <FormControl fullWidth>
+                        <InputLabel>Status</InputLabel>
+                        <Select value={status} label="Status" onChange={e => setStatus(e.target.value as TestStatus)}>
+                          <MenuItem value="published">Published (Visible to students)</MenuItem>
+                          <MenuItem value="draft">Draft (Instructor only)</MenuItem>
+                        </Select>
+                      </FormControl>
                     </Grid>
                     <Grid size={{ xs: 12 }}>
                       <TextField fullWidth multiline rows={3} label="Description (optional)" value={description}
@@ -345,6 +399,7 @@ export default function CreateTestPage() {
                     <Grid size={{ xs: 6 }}><Typography color="text.secondary">Duration:</Typography><Typography fontWeight={600}>{duration} min</Typography></Grid>
                     <Grid size={{ xs: 6 }}><Typography color="text.secondary">Category:</Typography><Typography fontWeight={600}>{categoryName || '-'}</Typography></Grid>
                     <Grid size={{ xs: 6 }}><Typography color="text.secondary">Questions:</Typography><Typography fontWeight={600}>{questions.length}</Typography></Grid>
+                    <Grid size={{ xs: 6 }}><Typography color="text.secondary">Status:</Typography><Typography fontWeight={600}>{status === 'published' ? 'Published' : 'Draft'}</Typography></Grid>
                   </Grid>
                   <Divider sx={{ my: 2 }} />
                   {questions.map((q, i) => (
@@ -374,10 +429,15 @@ export default function CreateTestPage() {
                 Next
               </Button>
             ) : (
-              <Button variant="contained" startIcon={<Save />} onClick={handleSubmit} disabled={saving}
-                sx={{ background: 'linear-gradient(135deg, #6C63FF, #8B85FF)' }}>
-                {saving ? 'Creating...' : 'Create Test'}
-              </Button>
+              <Box sx={{ display: 'flex', gap: 1 }}>
+                <Button variant="outlined" startIcon={<Save />} onClick={() => handleSubmit('draft')} disabled={saving}>
+                  {saving ? 'Saving...' : 'Save Draft'}
+                </Button>
+                <Button variant="contained" startIcon={<Save />} onClick={() => handleSubmit('published')} disabled={saving}
+                  sx={{ background: 'linear-gradient(135deg, #6C63FF, #8B85FF)' }}>
+                  {saving ? 'Publishing...' : 'Publish Test'}
+                </Button>
+              </Box>
             )}
           </Box>
         </Box>

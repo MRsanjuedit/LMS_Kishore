@@ -41,6 +41,10 @@ export default function TestDetailPage() {
         const testDoc = await getDoc(doc(db, 'tests', testId as string));
         if (testDoc.exists()) {
           const data = testDoc.data();
+          if ((data.status || 'published') !== 'published') {
+            setLoading(false);
+            return;
+          }
           setTest({ id: testDoc.id, ...data } as TestDetail);
 
           const qSnap = await getCountFromServer(

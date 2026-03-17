@@ -33,6 +33,7 @@ interface Question {
 interface TestData {
   title: string;
   duration: number;
+  status?: 'draft' | 'published';
 }
 
 function shuffleArray<T>(arr: T[]): T[] {
@@ -83,6 +84,11 @@ export default function TestAttemptPage() {
           return;
         }
         const testData = testDoc.data() as TestData;
+        if ((testData.status || 'published') !== 'published') {
+          toast.error('This test is not published yet');
+          router.push('/tests');
+          return;
+        }
         setTest(testData);
         setTimeLeft(testData.duration * 60);
 

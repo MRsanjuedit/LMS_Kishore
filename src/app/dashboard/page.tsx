@@ -77,12 +77,32 @@ export default function StudentDashboard() {
 
     // ── fetcher helpers ────────────────────────────────────────────
     const testsFetcher = async (): Promise<TestItem[]> => {
-      const snap = await getDocs(
-        query(collection(db, 'tests'), orderBy('createdAt', 'desc'), limit(6))
-      );
-      const list: TestItem[] = [];
-      snap.forEach(doc => list.push({ id: doc.id, ...doc.data() } as TestItem));
-      return list;
+      try {
+        const snap = await getDocs(
+          query(
+            collection(db, 'tests'),
+            where('status', '==', 'published'),
+            orderBy('createdAt', 'desc'),
+            limit(6)
+          )
+        );
+        const list: TestItem[] = [];
+        snap.forEach(doc => list.push({ id: doc.id, ...doc.data() } as TestItem));
+        return list;
+      } catch {
+        const fallbackSnap = await getDocs(
+          query(collection(db, 'tests'), orderBy('createdAt', 'desc'), limit(20))
+        );
+        const publishedOnly: TestItem[] = [];
+        fallbackSnap.forEach((docSnap) => {
+          const data = docSnap.data() as TestItem & { status?: string };
+          if ((data.status || 'published') === 'published') {
+            const { id: _ignoredId, ...rest } = data as TestItem & { id?: string; status?: string };
+            publishedOnly.push({ id: docSnap.id, ...rest });
+          }
+        });
+        return publishedOnly.slice(0, 6);
+      }
     };
 
     const resultsFetcher = async (): Promise<RecentResult[]> => {
