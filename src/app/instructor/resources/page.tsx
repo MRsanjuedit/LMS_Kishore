@@ -6,7 +6,7 @@ import {
   Chip, IconButton, Alert, Skeleton,
 } from '@mui/material';
 import { Add, Delete, OpenInNew, VideoLibrary } from '@mui/icons-material';
-import { addDoc, collection, deleteDoc, doc, getDocs, orderBy, query, serverTimestamp, where } from 'firebase/firestore';
+import { addDoc, collection, deleteDoc, doc, getDocs, query, serverTimestamp, where } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/contexts/AuthContext';
 import DashboardLayout from '@/components/DashboardLayout';
@@ -57,35 +57,15 @@ export default function InstructorResourcesPage() {
     setError('');
     try {
       const snap = await getDocs(
-        query(
-          collection(db, 'resources'),
-          where('createdBy', '==', user.uid),
-          orderBy('createdAt', 'desc')
-        )
+        query(collection(db, 'resources'), where('createdBy', '==', user.uid))
       );
       const list: ResourceItem[] = [];
       snap.forEach(d => list.push({ id: d.id, ...d.data() } as ResourceItem));
+      list.sort((a, b) => createdAtToMillis(b.createdAt) - createdAtToMillis(a.createdAt));
       setResources(list);
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : String(err);
-      if (message.includes('requires an index') || message.includes('currently building')) {
-        try {
-          const fallbackSnap = await getDocs(
-            query(collection(db, 'resources'), where('createdBy', '==', user.uid))
-          );
-          const fallbackList: ResourceItem[] = [];
-          fallbackSnap.forEach(d => fallbackList.push({ id: d.id, ...d.data() } as ResourceItem));
-          fallbackList.sort((a, b) => createdAtToMillis(b.createdAt) - createdAtToMillis(a.createdAt));
-          setResources(fallbackList);
-          setError('Index is still building. Showing resources with temporary fallback query.');
-        } catch (fallbackErr) {
-          console.error('Failed to load resources (fallback):', fallbackErr);
-          setError('Failed to load your resources.');
-        }
-      } else {
-        console.error('Failed to load resources:', err);
-        setError('Failed to load your resources.');
-      }
+      console.error('Failed to load resources:', err);
+      setError('Failed to load your resources.');
     }
     setLoading(false);
   };
