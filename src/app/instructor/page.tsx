@@ -90,10 +90,15 @@ export default function InstructorDashboard() {
         <Box>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
             <Typography variant="h4">Instructor Dashboard</Typography>
-            <Button variant="contained" startIcon={<Add />} onClick={() => router.push('/instructor/create-test')}
-              sx={{ background: 'linear-gradient(135deg, #6C63FF, #8B85FF)' }}>
-              Create Test
-            </Button>
+            <Box sx={{ display: 'flex', gap: 1.5 }}>
+              <Button variant="outlined" startIcon={<Add />} onClick={() => router.push('/instructor/resources')}>
+                Add Resource
+              </Button>
+              <Button variant="contained" startIcon={<Add />} onClick={() => router.push('/instructor/create-test')}
+                sx={{ background: 'linear-gradient(135deg, #6C63FF, #8B85FF)' }}>
+                Create Test
+              </Button>
+            </Box>
           </Box>
 
           <m.div variants={container} initial="hidden" animate="show">
