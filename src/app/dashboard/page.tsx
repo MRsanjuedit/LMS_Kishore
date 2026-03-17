@@ -39,11 +39,30 @@ interface RecentResult {
   total: number;
   accuracy: number;
   timeTaken: number;
-  createdAt: Date;
+  createdAt?: Date | string | number | null;
 }
 
 const container = { hidden: {}, show: { transition: { staggerChildren: 0.06 } } };
 const item = { hidden: { opacity: 0, y: 16 }, show: { opacity: 1, y: 0, transition: { duration: 0.4, ease: 'easeOut' as const } } };
+
+const toDate = (value: RecentResult['createdAt']): Date | null => {
+  if (!value) return null;
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
+  if (typeof value === 'string' || typeof value === 'number') {
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  }
+  return null;
+};
+
+const normalizeResults = (list: RecentResult[]): RecentResult[] =>
+  list.map((result) => ({ ...result, createdAt: toDate(result.createdAt) }));
+
+const formatResultDate = (value: RecentResult['createdAt']): string => {
+  const date = toDate(value);
+  if (!date) return '—';
+  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+};
 
 export default function StudentDashboard() {
   const { user, profile } = useAuth();
@@ -92,11 +111,12 @@ export default function StudentDashboard() {
     };
 
     const applyResults = (list: RecentResult[]) => {
-      setResults(list);
-      if (list.length > 0) {
-        const avgAcc = list.reduce((s, r) => s + r.accuracy, 0) / list.length;
-        const best = Math.max(...list.map(r => r.accuracy));
-        setStats({ totalTests: list.length, avgAccuracy: Math.round(avgAcc), bestScore: Math.round(best) });
+      const normalized = normalizeResults(list);
+      setResults(normalized);
+      if (normalized.length > 0) {
+        const avgAcc = normalized.reduce((sum, result) => sum + result.accuracy, 0) / normalized.length;
+        const best = Math.max(...normalized.map((result) => result.accuracy));
+        setStats({ totalTests: normalized.length, avgAccuracy: Math.round(avgAcc), bestScore: Math.round(best) });
       }
     };
 
@@ -377,7 +397,7 @@ export default function StudentDashboard() {
                           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 0.3 }}>
                             <CalendarToday sx={{ fontSize: 12, color: '#bbb' }} />
                             <Typography variant="caption" sx={{ color: '#aaa' }}>
-                              {r.createdAt?.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                              {formatResultDate(r.createdAt)}
                             </Typography>
                           </Box>
                         </Box>
