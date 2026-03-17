@@ -76,7 +76,7 @@ export default function InstructorDashboard() {
   }, [user]);
 
   const statCards = [
-    { label: 'My Tests', value: stats.tests, icon: <Quiz />, color: '#6C63FF' },
+    { label: 'Tests', value: stats.tests, icon: <Quiz />, color: '#6C63FF' },
     { label: 'Questions', value: stats.questions, icon: <Quiz />, color: '#10B981' },
     { label: 'Submissions', value: stats.submissions, icon: <People />, color: '#F59E0B' },
   ];
@@ -130,7 +130,7 @@ export default function InstructorDashboard() {
                       <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
                         {[
                           { label: 'Create New Test', icon: <Add />, path: '/instructor/create-test' },
-                          { label: 'View My Tests', icon: <Quiz />, path: '/instructor/tests' },
+                          { label: 'View Tests', icon: <Quiz />, path: '/instructor/tests' },
                           { label: 'Upload Free Resources', icon: <Add />, path: '/instructor/resources' },
                           { label: 'View Analytics', icon: <Analytics />, path: '/instructor/analytics' },
                         ].map((a, i) => (

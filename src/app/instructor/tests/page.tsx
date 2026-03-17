@@ -7,7 +7,7 @@ import {
   TableHead, TableRow, Paper, Skeleton, Dialog, DialogTitle,
   DialogContent, DialogActions,
 } from '@mui/material';
-import { Delete, Edit, Visibility, Add, Quiz } from '@mui/icons-material';
+import { Delete, Visibility, Add, Quiz } from '@mui/icons-material';
 import { motion as m } from 'framer-motion';
 import { collection, query, where, getDocs, deleteDoc, doc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
@@ -86,7 +86,7 @@ export default function InstructorTestsPage() {
       <DashboardLayout>
         <Box>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-            <Typography variant="h4">My Tests</Typography>
+            <Typography variant="h4">Tests</Typography>
             <Button variant="contained" startIcon={<Add />} onClick={() => router.push('/instructor/create-test')}
               sx={{ background: 'linear-gradient(135deg, #6C63FF, #8B85FF)' }}>
               Create Test
@@ -139,6 +139,14 @@ export default function InstructorTestsPage() {
                         </TableCell>
                         <TableCell>{t.createdAt?.toLocaleDateString() || '-'}</TableCell>
                         <TableCell>
+                          <Button
+                            size="small"
+                            startIcon={<Visibility />}
+                            onClick={() => router.push(`/instructor/tests/${t.id}`)}
+                            sx={{ mr: 1 }}
+                          >
+                            View Report
+                          </Button>
                           <IconButton size="small" onClick={() => router.push(`/instructor/tests/${t.id}`)}>
                             <Visibility />
                           </IconButton>

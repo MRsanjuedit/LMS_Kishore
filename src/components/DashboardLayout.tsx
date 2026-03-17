@@ -61,7 +61,7 @@ const studentNav = [
 const instructorNav = [
   { label: 'Dashboard', path: '/instructor', icon: <Dashboard />, section: 'Overview' },
   { label: 'Create Test', path: '/instructor/create-test', icon: <NoteAdd />, section: 'Management' },
-  { label: 'My Tests', path: '/instructor/tests', icon: <Assignment /> },
+  { label: 'Tests', path: '/instructor/tests', icon: <Assignment /> },
   { label: 'Free Resources', path: '/instructor/resources', icon: <VideoLibrary /> },
   { label: 'Student Analytics', path: '/instructor/analytics', icon: <Leaderboard />, section: 'Analysis' },
   { label: 'AI Reports', path: '/instructor/ai-reports', icon: <AutoAwesome /> },
