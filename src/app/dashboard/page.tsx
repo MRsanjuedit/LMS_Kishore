@@ -7,7 +7,7 @@ import {
 } from '@mui/material';
 import {
   Quiz, TrendingUp, EmojiEvents, Timer, ArrowForward,
-  PlayArrow, CalendarToday, Speed,
+  PlayArrow, CalendarToday, Speed, Timeline
 } from '@mui/icons-material';
 import { motion as m } from 'framer-motion';
 import { collection, query, where, getDocs, orderBy, limit } from 'firebase/firestore';
@@ -24,9 +24,10 @@ const RESULTS_CACHE_TTL = 30 * 1000;     // 30 s (user-specific, changes often)
 interface TestItem {
   id: string;
   title: string;
-  topicId: string;
-  topicName?: string;
-  categoryName?: string;
+  college?: string;
+  targetColleges?: string[];
+  startTime?: string | null;
+  endTime?: string | null;
   duration: number;
   questionCount: number;
   description?: string;
@@ -39,6 +40,7 @@ interface RecentResult {
   total: number;
   accuracy: number;
   timeTaken: number;
+  testId?: string;
   createdAt?: Date | string | number | null;
 }
 
@@ -69,7 +71,7 @@ export default function StudentDashboard() {
   const router = useRouter();
   const [tests, setTests] = useState<TestItem[]>([]);
   const [results, setResults] = useState<RecentResult[]>([]);
-  const [stats, setStats] = useState({ totalTests: 0, avgAccuracy: 0, bestScore: 0 });
+  const [stats, setStats] = useState({ attempted: 0, conducted: 0, live: 0, avgAccuracy: 0, bestScore: 0 });
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -82,21 +84,15 @@ export default function StudentDashboard() {
           query(
             collection(db, 'tests'),
             where('status', '==', 'published'),
-            orderBy('createdAt', 'desc'),
-            limit(6)
+            orderBy('createdAt', 'desc')
           )
         );
         const list: TestItem[] = [];
         snap.forEach(doc => list.push({ id: doc.id, ...doc.data() } as TestItem));
         return list;
       } catch (err: unknown) {
-        const errMsg = err instanceof Error ? err.message : String(err);
-        if (!errMsg.includes('currently building')) {
-          console.error('Error loading published tests (falling back):', err);
-        }
-        const fallbackSnap = await getDocs(
-          query(collection(db, 'tests'), orderBy('createdAt', 'desc'), limit(20))
-        );
+        console.error('Error loading published tests (falling back):', err);
+        const fallbackSnap = await getDocs(query(collection(db, 'tests'), orderBy('createdAt', 'desc')));
         const publishedOnly: TestItem[] = [];
         fallbackSnap.forEach((docSnap) => {
           const data = docSnap.data() as TestItem & { status?: string };
@@ -105,24 +101,20 @@ export default function StudentDashboard() {
             publishedOnly.push({ id: docSnap.id, ...rest });
           }
         });
-        return publishedOnly.slice(0, 6);
+        return publishedOnly;
       }
     };
 
     const resultsFetcher = async (): Promise<RecentResult[]> => {
       const snap = await getDocs(
-        query(
-          collection(db, 'submissions'),
-          where('userId', '==', user.uid),
-          orderBy('createdAt', 'desc'),
-          limit(5)
-        )
+        query(collection(db, 'submissions'), where('userId', '==', user.uid), orderBy('createdAt', 'desc'))
       );
       const list: RecentResult[] = [];
       snap.forEach(doc => {
         const d = doc.data();
         list.push({
           id: doc.id,
+          testId: d.testId,
           testTitle: d.testTitle || 'Test',
           score: d.score,
           total: d.total,
@@ -134,50 +126,80 @@ export default function StudentDashboard() {
       return list;
     };
 
-    const applyResults = (list: RecentResult[]) => {
-      const normalized = normalizeResults(list);
-      setResults(normalized);
-      if (normalized.length > 0) {
-        const avgAcc = normalized.reduce((sum, result) => sum + result.accuracy, 0) / normalized.length;
-        const best = Math.max(...normalized.map((result) => result.accuracy));
-        setStats({ totalTests: normalized.length, avgAccuracy: Math.round(avgAcc), bestScore: Math.round(best) });
+    // Calculate aggregated stats explicitly.
+    const aggregatedCalc = (allTests: TestItem[], allResults: RecentResult[]) => {
+      const userCollege = profile?.college || 'All';
+      
+      // Filter tests applicable to the user's college.
+      const collTests = allTests.filter(t => {
+        const hasCollegeList = Array.isArray(t.targetColleges);
+        const matchesCollege = hasCollegeList 
+           ? (t.targetColleges!.length === 0 || t.targetColleges!.includes('All') || t.targetColleges!.includes(userCollege))
+           : (!t.college || t.college === 'All' || t.college === userCollege);
+        return matchesCollege;
+      });
+      
+      const attIds = new Set(allResults.map(r => r.testId));
+      const conducted = collTests.length;
+      const attempted = attIds.size;
+      
+      const now = new Date().getTime();
+      const activeLiveTests = collTests.filter(t => {
+        if (attIds.has(t.id)) return false;
+        if (t.startTime && new Date(t.startTime).getTime() > now) return false;
+        if (t.endTime && new Date(t.endTime).getTime() < now) return false;
+        return true;
+      });
+      
+      const live = activeLiveTests.length;
+
+      let avgA = 0;
+      let bstS = 0;
+      const normalizedResults = normalizeResults(allResults);
+      if (normalizedResults.length > 0) {
+        avgA = Math.round(normalizedResults.reduce((sum, r) => sum + r.accuracy, 0) / normalizedResults.length);
+        bstS = Math.round(Math.max(...normalizedResults.map(r => r.accuracy)));
       }
+
+      setStats({ attempted, conducted, live, avgAccuracy: avgA, bestScore: bstS });
+      
+      // Show up to 6 live tests.
+      const filteredLive = activeLiveTests.slice(0, 6);
+      if (filteredLive.length < 6) {
+        const others = collTests.filter(t => attIds.has(t.id)).slice(0, 6 - filteredLive.length);
+        setTests([...filteredLive, ...others]);
+      } else {
+        setTests(filteredLive);
+      }
+      setResults(normalizedResults.slice(0, 5));
     };
 
-    const RESULTS_KEY = `dashboard_results_${user.uid}`;
+    const TESTS_KEY = `dashboard_tests_all`;
+    const RESULTS_KEY = `dashboard_results_all_${user.uid}`;
 
-    // ── all state updates happen inside the async function ─────────
     const load = async () => {
-      // stale-while-revalidate: serve cached data instantly
-      const cachedTests = getSWRData('dashboard_tests_latest_6', TESTS_CACHE_TTL, testsFetcher, setTests);
-      const cachedResults = getSWRData(RESULTS_KEY, RESULTS_CACHE_TTL, resultsFetcher, applyResults);
+      const cachedTests = getSWRData(TESTS_KEY, TESTS_CACHE_TTL, testsFetcher, (t) => { if (results.length > 0) aggregatedCalc(t, results) });
+      const cachedResults = getSWRData(RESULTS_KEY, RESULTS_CACHE_TTL, resultsFetcher, (r) => { if (tests.length > 0) aggregatedCalc(tests, r) });
 
-      if (cachedTests !== null) setTests(cachedTests);
-      if (cachedResults !== null) applyResults(cachedResults);
-
-      // If both served from cache → no spinner needed
       if (cachedTests !== null && cachedResults !== null) {
+        aggregatedCalc(cachedTests, cachedResults);
         setLoading(false);
         return;
       }
 
-      // parallel fetch for any missing data
       try {
-        await Promise.all([
-          cachedTests === null
-            ? getCachedOrFetch('dashboard_tests_latest_6', TESTS_CACHE_TTL, testsFetcher).then(setTests)
-            : Promise.resolve(),
-          cachedResults === null
-            ? getCachedOrFetch(RESULTS_KEY, RESULTS_CACHE_TTL, resultsFetcher).then(applyResults)
-            : Promise.resolve(),
+        const [loadedT, loadedR] = await Promise.all([
+          cachedTests === null ? getCachedOrFetch(TESTS_KEY, TESTS_CACHE_TTL, testsFetcher) : Promise.resolve(cachedTests),
+          cachedResults === null ? getCachedOrFetch(RESULTS_KEY, RESULTS_CACHE_TTL, resultsFetcher) : Promise.resolve(cachedResults),
         ]);
+        aggregatedCalc(loadedT, loadedR);
       } catch (err) {
         console.error('Error loading dashboard:', err);
       }
       setLoading(false);
     };
     void load();
-  }, [user]);
+  }, [user, profile]);
 
   const greeting = () => {
     const h = new Date().getHours();
@@ -188,28 +210,36 @@ export default function StudentDashboard() {
 
   const statCards = [
     {
-      label: 'Tests Completed',
-      value: stats.totalTests,
-      icon: <Quiz sx={{ fontSize: 28 }} />,
-      gradient: 'linear-gradient(135deg, #6C63FF, #8B85FF)',
-      shadowColor: 'rgba(108, 99, 255, 0.3)',
-      bgLight: '#EDE9FF',
+      label: 'Conducted Tests',
+      value: stats.conducted,
+      icon: <Timeline sx={{ fontSize: 28 }} />,
+      gradient: 'linear-gradient(135deg, #3B82F6, #60A5FA)',
+      shadowColor: 'rgba(59, 130, 246, 0.3)',
+      bgLight: '#DBEAFE',
     },
     {
-      label: 'Avg Accuracy',
-      value: `${stats.avgAccuracy}%`,
-      icon: <Speed sx={{ fontSize: 28 }} />,
+      label: 'Attempted Tests',
+      value: stats.attempted,
+      icon: <Quiz sx={{ fontSize: 28 }} />,
       gradient: 'linear-gradient(135deg, #10B981, #34D399)',
       shadowColor: 'rgba(16, 185, 129, 0.3)',
       bgLight: '#D1FAE5',
     },
     {
-      label: 'Best Score',
-      value: `${stats.bestScore}%`,
-      icon: <EmojiEvents sx={{ fontSize: 28 }} />,
+      label: 'Live Tests',
+      value: stats.live,
+      icon: <Timer sx={{ fontSize: 28 }} />,
       gradient: 'linear-gradient(135deg, #F59E0B, #FBBF24)',
       shadowColor: 'rgba(245, 158, 11, 0.3)',
       bgLight: '#FEF3C7',
+    },
+    {
+      label: 'Best Score',
+      value: `${stats.bestScore}%`,
+      icon: <EmojiEvents sx={{ fontSize: 28 }} />,
+      gradient: 'linear-gradient(135deg, #EC4899, #F472B6)',
+      shadowColor: 'rgba(236, 72, 153, 0.3)',
+      bgLight: '#FCE7F3',
     },
   ];
 
@@ -235,7 +265,7 @@ export default function StudentDashboard() {
                   Welcome back, {profile?.name?.split(' ')[0] || 'Student'}!
                 </Typography>
                 <Typography sx={{ color: 'rgba(255,255,255,0.5)', fontSize: 15, maxWidth: 500 }}>
-                  Continue your learning journey. You&apos;ve completed {stats.totalTests} test{stats.totalTests !== 1 ? 's' : ''} so far.
+                  Continue your learning journey. There are {stats.live} live tests waiting for you.
                 </Typography>
                 <Button
                   variant="contained"
@@ -344,16 +374,7 @@ export default function StudentDashboard() {
                             </IconButton>
                           </Box>
                           <Typography sx={{ fontWeight: 700, fontSize: 16, mb: 1, color: '#1a1a2e' }}>{t.title}</Typography>
-                          <Box sx={{ display: 'flex', gap: 1, mb: 2, flexWrap: 'wrap' }}>
-                            {t.categoryName && (
-                              <Chip label={t.categoryName} size="small"
-                                sx={{ fontSize: 11, fontWeight: 600, height: 24, bgcolor: '#6C63FF12', color: '#6C63FF', border: 'none' }} />
-                            )}
-                            {t.topicName && (
-                              <Chip label={t.topicName} size="small"
-                                sx={{ fontSize: 11, fontWeight: 600, height: 24, bgcolor: '#f5f5f5', color: '#888' }} />
-                            )}
-                          </Box>
+                          <Box sx={{ display: 'flex', gap: 1, mb: 2, flexWrap: 'wrap' }}></Box>
                           <Box sx={{ display: 'flex', gap: 3, color: '#aaa', fontSize: 13 }}>
                             <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                               <Timer sx={{ fontSize: 16 }} /> {t.duration}m

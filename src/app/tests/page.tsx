@@ -28,36 +28,24 @@ import { useRouter } from 'next/navigation';
 interface TestItem {
   id: string;
   title: string;
-  topicId: string;
-  topicName?: string;
-  categoryName?: string;
-  categoryId?: string;
   duration: number;
   questionCount: number;
   difficulty?: string;
-}
-
-interface CategoryItem {
-  id: string;
-  name: string;
 }
 
 const container = { hidden: {}, show: { transition: { staggerChildren: 0.06 } } };
 const item = { hidden: { opacity: 0, y: 20 }, show: { opacity: 1, y: 0 } };
 const TESTS_PAGE_SIZE = 24;
 const TESTS_CACHE_TTL = 3 * 60 * 1000;
-const CATEGORY_CACHE_TTL = 10 * 60 * 1000;
 
 export default function TestsPage() {
   const router = useRouter();
   const [tests, setTests] = useState<TestItem[]>([]);
-  const [categories, setCategories] = useState<CategoryItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(false);
   const [cursor, setCursor] = useState<QueryDocumentSnapshot<DocumentData> | null>(null);
   const [search, setSearch] = useState('');
-  const [filterCat, setFilterCat] = useState('all');
 
   useEffect(() => {
     const load = async () => {
@@ -103,13 +91,6 @@ export default function TestsPage() {
         }
       };
 
-      const categoriesFetcher = async (): Promise<CategoryItem[]> => getCachedOrFetch('categories_all', CATEGORY_CACHE_TTL, async () => {
-        const catsSnap = await getDocs(collection(db, 'categories'));
-        const cats: CategoryItem[] = [];
-        catsSnap.forEach(doc => cats.push({ id: doc.id, ...doc.data() } as CategoryItem));
-        return cats;
-      });
-
       const applyTests = (payload: { tests: TestItem[]; cursor: QueryDocumentSnapshot<DocumentData> | null; hasMore: boolean }) => {
         setTests(payload.tests);
         setCursor(payload.cursor);
@@ -117,28 +98,20 @@ export default function TestsPage() {
       };
 
       const cachedTests = getSWRData('tests_page_latest', TESTS_CACHE_TTL, testsFetcher, applyTests);
-      const cachedCategories = getSWRData('categories_all', CATEGORY_CACHE_TTL, categoriesFetcher, setCategories);
 
       if (cachedTests !== null) applyTests(cachedTests);
-      if (cachedCategories !== null) setCategories(cachedCategories);
 
-      if (cachedTests !== null && cachedCategories !== null) {
+      if (cachedTests !== null) {
         setLoading(false);
         return;
       }
 
       try {
-        const [testsData, catList] = await Promise.all([
-          cachedTests === null
+        const testsData = await (cachedTests === null
             ? getCachedOrFetch('tests_page_latest', TESTS_CACHE_TTL, testsFetcher)
-            : Promise.resolve(cachedTests),
-          cachedCategories === null
-            ? categoriesFetcher()
-            : Promise.resolve(cachedCategories),
-        ]);
+            : Promise.resolve(cachedTests));
 
         applyTests(testsData);
-        setCategories(catList);
       } catch (fallbackErr) {
         console.error('Error loading tests:', fallbackErr);
       }
@@ -195,10 +168,7 @@ export default function TestsPage() {
   };
 
   const filtered = tests.filter(t => {
-    const matchSearch = t.title.toLowerCase().includes(search.toLowerCase()) ||
-      (t.topicName || '').toLowerCase().includes(search.toLowerCase());
-    const matchCat = filterCat === 'all' || t.categoryId === filterCat;
-    return matchSearch && matchCat;
+    return t.title.toLowerCase().includes(search.toLowerCase());
   });
 
   return (
@@ -225,16 +195,6 @@ export default function TestsPage() {
                   startAdornment: <InputAdornment position="start"><Search /></InputAdornment>,
                 }}
               />
-              <FormControl size="small" sx={{ minWidth: { xs: '100%', sm: 200 } }}>
-                <InputLabel>Category</InputLabel>
-                <Select value={filterCat} label="Category" onChange={e => setFilterCat(e.target.value)}
-                  startAdornment={<FilterList sx={{ mr: 0.5 }} />}>
-                  <MenuItem value="all">All Categories</MenuItem>
-                  {categories.map(c => (
-                    <MenuItem key={c.id} value={c.id}>{c.name}</MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
             </Box>
           </Card>
 
@@ -263,8 +223,7 @@ export default function TestsPage() {
                         <CardContent sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
                           <Typography variant="h6" sx={{ mb: 1 }}>{t.title}</Typography>
                           <Box sx={{ display: 'flex', gap: 1, mb: 2, flexWrap: 'wrap' }}>
-                            {t.categoryName && <Chip label={t.categoryName} size="small" color="primary" variant="outlined" />}
-                            {t.topicName && <Chip label={t.topicName} size="small" variant="outlined" />}
+
                             {t.difficulty && (
                               <Chip label={t.difficulty} size="small"
                                 color={t.difficulty === 'Easy' ? 'success' : t.difficulty === 'Hard' ? 'error' : 'warning'} />

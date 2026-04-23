@@ -65,17 +65,6 @@ service cloud.firestore {
       allow delete: if hasRole('admin');
     }
 
-    // Categories collection
-    match /categories/{categoryId} {
-      allow read: if isAuth();
-      allow create, update, delete: if hasRole('admin');
-    }
-
-    // Topics collection
-    match /topics/{topicId} {
-      allow read: if isAuth();
-      allow create, update, delete: if hasRole('admin');
-    }
 
     // Free resources collection (YouTube videos/playlists)
     match /resources/{resourceId} {
@@ -84,6 +73,12 @@ service cloud.firestore {
       allow update, delete: if isAuth() && (
         resource.data.createdBy == request.auth.uid || hasRole('admin')
       );
+    }
+
+    // Colleges collection
+    match /colleges/{collegeId} {
+      allow read: if true; // Accessible before auth for the signup page
+      allow create, update, delete: if isAuth() && (hasRole('instructor') || hasRole('admin'));
     }
   }
 }

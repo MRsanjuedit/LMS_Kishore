@@ -1,12 +1,15 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { collection, getDocs } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
 import {
   Box, Card, CardContent, TextField, Button, Typography,
   Link as MuiLink, Alert, InputAdornment, IconButton,
+  Select, MenuItem, FormControl, InputLabel
 } from '@mui/material';
-import { Visibility, VisibilityOff, Email, Lock, Person } from '@mui/icons-material';
+import { Visibility, VisibilityOff, Email, Lock, Person, School } from '@mui/icons-material';
 import { motion as m } from 'framer-motion';
 import { useAuth } from '@/contexts/AuthContext';
 import toast from 'react-hot-toast';
@@ -15,11 +18,30 @@ export default function SignupPage() {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [college, setCollege] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [collegesList, setCollegesList] = useState<string[]>([]);
   const { signUp } = useAuth();
   const router = useRouter();
+
+  useEffect(() => {
+    const fetchColleges = async () => {
+      try {
+        const snap = await getDocs(collection(db, 'colleges'));
+        const list: string[] = [];
+        snap.forEach(doc => {
+          if (doc.data().name) list.push(doc.data().name);
+        });
+        setCollegesList(list.length > 0 ? list : ['Other']);
+      } catch (err) {
+        console.error('Failed to fetch colleges', err);
+        setCollegesList(['Other']);
+      }
+    };
+    fetchColleges();
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -28,9 +50,13 @@ export default function SignupPage() {
       setError('Password must be at least 6 characters');
       return;
     }
+    if (!college) {
+      setError('Please select your college');
+      return;
+    }
     setLoading(true);
     try {
-      await signUp(email, password, name);
+      await signUp(email, password, name, college);
       toast.success('Account created successfully!');
       router.push('/dashboard');
     } catch (err: unknown) {
@@ -71,6 +97,19 @@ export default function SignupPage() {
               <TextField fullWidth label="Email" type="email" value={email} onChange={e => setEmail(e.target.value)}
                 required sx={{ mb: 2 }}
                 InputProps={{ startAdornment: <InputAdornment position="start"><Email color="action" /></InputAdornment> }} />
+              <FormControl fullWidth sx={{ mb: 2 }}>
+                <InputLabel>College</InputLabel>
+                <Select
+                  value={college}
+                  label="College"
+                  onChange={e => setCollege(e.target.value as string)}
+                  startAdornment={<InputAdornment position="start" sx={{ pl: 1 }}><School color="action" /></InputAdornment>}
+                >
+                  {collegesList.map(c => (
+                    <MenuItem key={c} value={c}>{c}</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
               <TextField fullWidth label="Password" type={showPassword ? 'text' : 'password'}
                 value={password} onChange={e => setPassword(e.target.value)} required sx={{ mb: 3 }}
                 InputProps={{

@@ -28,7 +28,6 @@ import {
   Quiz,
   Analytics,
   People,
-  Category,
   Add,
   Logout,
   Person,
@@ -41,6 +40,7 @@ import {
   AutoAwesome,
   Leaderboard,
   VideoLibrary,
+  School,
 } from '@mui/icons-material';
 import { motion as m, AnimatePresence } from 'framer-motion';
 import { useAuth } from '@/contexts/AuthContext';
@@ -62,6 +62,7 @@ const instructorNav = [
   { label: 'Dashboard', path: '/instructor', icon: <Dashboard />, section: 'Overview' },
   { label: 'Create Test', path: '/instructor/create-test', icon: <NoteAdd />, section: 'Management' },
   { label: 'Tests', path: '/instructor/tests', icon: <Assignment /> },
+  { label: 'Colleges', path: '/instructor/colleges', icon: <School /> },
   { label: 'Free Resources', path: '/instructor/resources', icon: <VideoLibrary /> },
   { label: 'Student Analytics', path: '/instructor/analytics', icon: <Leaderboard />, section: 'Analysis' },
   { label: 'AI Reports', path: '/instructor/ai-reports', icon: <AutoAwesome /> },
@@ -72,7 +73,6 @@ const instructorNav = [
 const adminNav = [
   { label: 'Dashboard', path: '/admin', icon: <Dashboard /> },
   { label: 'Users', path: '/admin/users', icon: <People /> },
-  { label: 'Categories', path: '/admin/categories', icon: <Category /> },
   { label: 'Analytics', path: '/admin/analytics', icon: <Analytics /> },
   { label: 'Profile', path: '/profile', icon: <Person /> },
   { label: 'Settings', path: '/settings', icon: <Settings /> },

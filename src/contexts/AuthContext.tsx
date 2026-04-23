@@ -19,6 +19,7 @@ export interface UserProfile {
   name: string;
   email: string;
   role: UserRole;
+  college?: string;
   createdAt?: Date;
 }
 
@@ -27,7 +28,7 @@ interface AuthContextType {
   profile: UserProfile | null;
   loading: boolean;
   signIn: (email: string, password: string) => Promise<UserRole>;
-  signUp: (email: string, password: string, name: string) => Promise<void>;
+  signUp: (email: string, password: string, name: string, college: string) => Promise<void>;
   createInstructor: (email: string, password: string, name: string) => Promise<void>;
   signOut: () => Promise<void>;
 }
@@ -46,6 +47,7 @@ const buildUserProfile = (firebaseUser: User, data?: Partial<UserProfile>): User
   name: data?.name || firebaseUser.displayName || 'User',
   email: data?.email || firebaseUser.email || '',
   role: isUserRole(data?.role) ? data.role : 'student',
+  college: data?.college || '',
 });
 
 const getCachedProfile = (uid: string): UserProfile | null => {
@@ -156,7 +158,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return 'student';
   };
 
-  const signUp = async (email: string, password: string, name: string) => {
+  const signUp = async (email: string, password: string, name: string, college: string) => {
     const cred = await createUserWithEmailAndPassword(auth, email, password);
     await updateProfile(cred.user, { displayName: name });
     const userProfile: UserProfile = {
@@ -164,6 +166,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       name,
       email,
       role: 'student',
+      college,
     };
     await setDoc(doc(db, 'users', cred.user.uid), {
       ...userProfile,

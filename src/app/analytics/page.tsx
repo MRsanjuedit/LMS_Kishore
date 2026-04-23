@@ -20,7 +20,7 @@ const COLORS = ['#6C63FF', '#FF6584', '#10B981', '#F59E0B', '#3B82F6', '#EF4444'
 
 interface AnalyticsData {
   scoreHistory: { date: string; accuracy: number; score: number }[];
-  topicPerformance: { topic: string; accuracy: number; count: number }[];
+  testPerformance: { title: string; accuracy: number; count: number }[];
   difficultyBreakdown: { name: string; value: number }[];
   totalTests: number;
   avgAccuracy: number;
@@ -48,7 +48,7 @@ export default function AnalyticsPage() {
         const submissions: Array<{
           testId: string; testTitle: string; score: number; total: number;
           accuracy: number; timeTaken: number; createdAt: Date;
-          topicName?: string; categoryName?: string;
+          accuracy: number; timeTaken: number; createdAt: Date;
         }> = [];
 
         snap.forEach(d => {
@@ -61,8 +61,6 @@ export default function AnalyticsPage() {
             accuracy: dd.accuracy,
             timeTaken: dd.timeTaken,
             createdAt: dd.createdAt?.toDate(),
-            topicName: dd.topicName,
-            categoryName: dd.categoryName,
           });
         });
 
@@ -79,17 +77,17 @@ export default function AnalyticsPage() {
           score: s.total > 0 ? Math.round((s.score / s.total) * 100) : 0,
         }));
 
-        // Topic performance
-        const topicMap: Record<string, { total: number; correct: number; count: number }> = {};
+        // Test performance
+        const testMap: Record<string, { total: number; correct: number; count: number }> = {};
         submissions.forEach(s => {
-          const topic = s.topicName || s.testTitle || 'Unknown';
-          if (!topicMap[topic]) topicMap[topic] = { total: 0, correct: 0, count: 0 };
-          topicMap[topic].total += s.total;
-          topicMap[topic].correct += s.score;
-          topicMap[topic].count++;
+          const title = s.testTitle || 'Unknown';
+          if (!testMap[title]) testMap[title] = { total: 0, correct: 0, count: 0 };
+          testMap[title].total += s.total;
+          testMap[title].correct += s.score;
+          testMap[title].count++;
         });
-        const topicPerformance = Object.entries(topicMap).map(([topic, v]) => ({
-          topic: topic.length > 15 ? topic.slice(0, 15) + '...' : topic,
+        const testPerformance = Object.entries(testMap).map(([title, v]) => ({
+          title: title.length > 15 ? title.slice(0, 15) + '...' : title,
           accuracy: v.total > 0 ? Math.round((v.correct / v.total) * 100) : 0,
           count: v.count,
         }));
@@ -125,13 +123,13 @@ export default function AnalyticsPage() {
         }
 
         // Weak areas
-        const weakAreas = topicPerformance
+        const weakAreas = testPerformance
           .filter(t => t.accuracy < 60)
           .sort((a, b) => a.accuracy - b.accuracy)
-          .map(t => t.topic);
+          .map(t => t.title);
 
         setData({
-          scoreHistory, topicPerformance, difficultyBreakdown,
+          scoreHistory, testPerformance, difficultyBreakdown,
           totalTests, avgAccuracy, bestAccuracy, improvement, weakAreas,
         });
       } catch (err) {
@@ -275,11 +273,11 @@ export default function AnalyticsPage() {
               <m.div variants={item}>
                 <Card>
                   <CardContent>
-                    <Typography variant="h6" sx={{ mb: 2 }}>Topic-wise Performance</Typography>
+                    <Typography variant="h6" sx={{ mb: 2 }}>Test-wise Performance</Typography>
                     <ResponsiveContainer width="100%" height={300}>
-                      <BarChart data={data.topicPerformance}>
+                      <BarChart data={data.testPerformance}>
                         <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                        <XAxis dataKey="topic" fontSize={12} />
+                        <XAxis dataKey="title" fontSize={12} />
                         <YAxis domain={[0, 100]} fontSize={12} />
                         <Tooltip />
                         <Bar dataKey="accuracy" fill="#6C63FF" radius={[6, 6, 0, 0]} />

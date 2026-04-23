@@ -8,12 +8,12 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useEffect } from 'react';
 
 const features = [
-  { icon: <Quiz sx={{ fontSize: 40 }} />, title: 'Practice Tests', desc: 'Take tests across multiple categories with real exam-like interface' },
-  { icon: <Analytics sx={{ fontSize: 40 }} />, title: 'Performance Analytics', desc: 'Track your progress with detailed score history and topic-wise analysis' },
+  { icon: <Quiz sx={{ fontSize: 40 }} />, title: 'Practice Tests', desc: 'Take tests targeted for your college with a real exam-like interface' },
+  { icon: <Analytics sx={{ fontSize: 40 }} />, title: 'Performance Analytics', desc: 'Track your progress with detailed score history and test-wise analysis' },
   { icon: <Psychology sx={{ fontSize: 40 }} />, title: 'AI Explanations', desc: 'Get AI-powered explanations for every question you attempt' },
   { icon: <Speed sx={{ fontSize: 40 }} />, title: 'Real Exam Experience', desc: 'Countdown timer, question navigation, and auto-submit features' },
-  { icon: <TrendingUp sx={{ fontSize: 40 }} />, title: 'Weakness Detection', desc: 'AI identifies your weak areas and suggests topics to work on' },
-  { icon: <SchoolOutlined sx={{ fontSize: 40 }} />, title: 'Multi-Category', desc: 'Programming, Aptitude, Reasoning, English, UPSC, and more' },
+  { icon: <TrendingUp sx={{ fontSize: 40 }} />, title: 'Weakness Detection', desc: 'AI identifies your weak areas and suggests areas to work on' },
+  { icon: <SchoolOutlined sx={{ fontSize: 40 }} />, title: 'College-Tailored', desc: 'Assessments and tests specifically assigned to your cohort' },
 ];
 
 const container = { hidden: {}, show: { transition: { staggerChildren: 0.1 } } };

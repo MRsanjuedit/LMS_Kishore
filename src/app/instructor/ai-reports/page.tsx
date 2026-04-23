@@ -20,9 +20,15 @@ import DashboardLayout from '@/components/DashboardLayout';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import toast from 'react-hot-toast';
 
+interface CollegeOption {
+  id: string;
+  name: string;
+}
+
 interface TestOption {
   id: string;
   title: string;
+  targetColleges: string[];
 }
 
 interface AIReport {
@@ -125,7 +131,11 @@ function buildStudentReport(row: StudentRow): StudentReportItem {
 
 export default function AIReportsPage() {
   const { user } = useAuth();
+  const [colleges, setColleges] = useState<CollegeOption[]>([]);
+  const [selectedCollege, setSelectedCollege] = useState('');
+  const [loadingColleges, setLoadingColleges] = useState(true);
   const [tests, setTests] = useState<TestOption[]>([]);
+  const [filteredTests, setFilteredTests] = useState<TestOption[]>([]);
   const [selectedTest, setSelectedTest] = useState('');
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
@@ -134,6 +144,22 @@ export default function AIReportsPage() {
   const [studentRows, setStudentRows] = useState<StudentRow[]>([]);
   const [studentReports, setStudentReports] = useState<StudentReportItem[]>([]);
 
+  // Load colleges
+  useEffect(() => {
+    const loadColleges = async () => {
+      try {
+        const snap = await getDocs(query(collection(db, 'colleges')));
+        const list: CollegeOption[] = [];
+        snap.forEach(d => { if (d.data().name) list.push({ id: d.id, name: d.data().name }); });
+        list.sort((a, b) => a.name.localeCompare(b.name));
+        setColleges(list);
+      } catch (err) { console.error('Error loading colleges:', err); }
+      setLoadingColleges(false);
+    };
+    loadColleges();
+  }, []);
+
+  // Load instructor tests
   useEffect(() => {
     const loadTests = async () => {
       if (!user) return;
@@ -142,7 +168,7 @@ export default function AIReportsPage() {
           query(collection(db, 'tests'), where('createdBy', '==', user.uid))
         );
         const t: TestOption[] = [];
-        snap.forEach(d => t.push({ id: d.id, title: (d.data().title as string) || 'Untitled' }));
+        snap.forEach(d => t.push({ id: d.id, title: (d.data().title as string) || 'Untitled', targetColleges: d.data().targetColleges || [] }));
         setTests(t);
       } catch (err) {
         console.error('Error loading tests:', err);
@@ -151,6 +177,19 @@ export default function AIReportsPage() {
     };
     loadTests();
   }, [user]);
+
+  // Filter tests when college changes
+  useEffect(() => {
+    if (!selectedCollege) { setFilteredTests([]); setSelectedTest(''); setReport(null); return; }
+    const filtered = tests.filter(t =>
+      t.targetColleges.includes(selectedCollege) || t.targetColleges.includes('All')
+    );
+    setFilteredTests(filtered);
+    setSelectedTest('');
+    setReport(null);
+    setStudentRows([]);
+    setStudentReports([]);
+  }, [selectedCollege, tests]);
 
   const buildPerStudentData = async (submissions: SubmissionRecord[]) => {
     const validSubs = submissions.filter((s) => !!s.userId);
@@ -287,13 +326,47 @@ export default function AIReportsPage() {
             Get AI-powered analysis and insights on your test performance data
           </Typography>
 
-          {/* Test Selector */}
-          <Card sx={{ mb: 3 }}>
+          {/* Two-Step Selector: College → Test */}
+          <Card sx={{ mb: 3, borderRadius: 3 }}>
             <CardContent sx={{ p: 3 }}>
-              <Typography variant="h6" sx={{ mb: 2 }}>Select a Test to Analyze</Typography>
+              <Typography variant="h6" fontWeight={700} sx={{ mb: 2 }}>Select College &amp; Test to Analyze</Typography>
               <Grid container spacing={2} alignItems="center">
-                <Grid size={{ xs: 12, sm: 8 }}>
+                {/* College */}
+                <Grid size={{ xs: 12, sm: 4 }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                    <School fontSize="small" sx={{ color: '#6C63FF' }} />
+                    <Typography variant="body2" fontWeight={600} color="text.secondary">Step 1 — College</Typography>
+                  </Box>
                   <FormControl fullWidth>
+                    <InputLabel>Choose College</InputLabel>
+                    <Select
+                      value={selectedCollege}
+                      label="Choose College"
+                      onChange={e => setSelectedCollege(e.target.value)}
+                    >
+                      {loadingColleges ? (
+                        <MenuItem disabled>Loading…</MenuItem>
+                      ) : colleges.length === 0 ? (
+                        <MenuItem disabled>No colleges found</MenuItem>
+                      ) : (
+                        colleges.map(c => <MenuItem key={c.id} value={c.name}>{c.name}</MenuItem>)
+                      )}
+                    </Select>
+                  </FormControl>
+                </Grid>
+
+                {/* Arrow */}
+                <Grid size={{ xs: 12, sm: 'auto' }} sx={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'center', pb: 0.5 }}>
+                  <Assessment sx={{ color: selectedCollege ? 'primary.main' : 'text.disabled', fontSize: 28, transition: '0.3s' }} />
+                </Grid>
+
+                {/* Test */}
+                <Grid size={{ xs: 12, sm: 4 }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                    <Assessment fontSize="small" sx={{ color: '#10B981' }} />
+                    <Typography variant="body2" fontWeight={600} color="text.secondary">Step 2 — Test</Typography>
+                  </Box>
+                  <FormControl fullWidth disabled={!selectedCollege}>
                     <InputLabel>Choose Test</InputLabel>
                     <Select
                       value={selectedTest}
@@ -302,23 +375,25 @@ export default function AIReportsPage() {
                     >
                       {loading ? (
                         <MenuItem disabled>Loading tests...</MenuItem>
-                      ) : tests.length === 0 ? (
-                        <MenuItem disabled>No tests created yet</MenuItem>
+                      ) : filteredTests.length === 0 ? (
+                        <MenuItem disabled>{selectedCollege ? 'No tests for this college' : 'Select a college first'}</MenuItem>
                       ) : (
-                        tests.map(t => (
+                        filteredTests.map(t => (
                           <MenuItem key={t.id} value={t.id}>{t.title}</MenuItem>
                         ))
                       )}
                     </Select>
                   </FormControl>
                 </Grid>
-                <Grid size={{ xs: 12, sm: 4 }}>
+
+                {/* Generate button */}
+                <Grid size={{ xs: 12, sm: 'auto' }} sx={{ display: 'flex', alignItems: 'flex-end' }}>
                   <Button
                     fullWidth variant="contained" size="large"
                     startIcon={generating ? <CircularProgress size={20} color="inherit" /> : <Psychology />}
                     onClick={handleGenerate}
-                    disabled={generating || !selectedTest}
-                    sx={{ py: 1.8, background: 'linear-gradient(135deg, #6C63FF, #8B85FF)', fontWeight: 600 }}
+                    disabled={generating || !selectedTest || !selectedCollege}
+                    sx={{ py: 1.8, background: 'linear-gradient(135deg, #6C63FF, #8B85FF)', fontWeight: 600, whiteSpace: 'nowrap' }}
                   >
                     {generating ? 'Analyzing...' : 'Generate Report'}
                   </Button>

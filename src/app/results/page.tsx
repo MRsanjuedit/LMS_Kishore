@@ -286,7 +286,7 @@ function ResultsContent() {
                 <TableCell>Score</TableCell>
                 <TableCell>Accuracy</TableCell>
                 <TableCell>Time</TableCell>
-                <TableCell>Date</TableCell>
+                <TableCell>Date &amp; End Time</TableCell>
                 <TableCell>Action</TableCell>
               </TableRow>
             </TableHead>
@@ -310,7 +310,9 @@ function ResultsContent() {
                     </Box>
                   </TableCell>
                   <TableCell>{s.timeTaken} min</TableCell>
-                  <TableCell>{s.createdAt?.toLocaleDateString()}</TableCell>
+                  <TableCell>
+                    {s.createdAt?.toLocaleDateString()} {s.createdAt?.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  </TableCell>
                   <TableCell>
                     <Button size="small" onClick={() => router.push(`/results?testId=${s.testId}&latest=true`)}>
                       Review

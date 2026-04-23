@@ -17,8 +17,7 @@ import ProtectedRoute from '@/components/ProtectedRoute';
 interface TestDetail {
   id: string;
   title: string;
-  topicName?: string;
-  categoryName?: string;
+
   duration: number;
   questionCount: number;
   description?: string;
@@ -101,10 +100,7 @@ export default function TestDetailPage() {
         <Box sx={{ maxWidth: 700, mx: 'auto' }}>
           <m.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
             <Typography variant="h4" sx={{ mb: 1 }}>{test.title}</Typography>
-            <Box sx={{ display: 'flex', gap: 1, mb: 3, flexWrap: 'wrap' }}>
-              {test.categoryName && <Chip label={test.categoryName} color="primary" />}
-              {test.topicName && <Chip label={test.topicName} variant="outlined" />}
-            </Box>
+            <Box sx={{ display: 'flex', gap: 1, mb: 3, flexWrap: 'wrap' }}></Box>
 
             <Card sx={{ mb: 3 }}>
               <CardContent sx={{ p: 3 }}>

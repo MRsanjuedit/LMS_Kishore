@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import {
   Box, Typography, Grid, Card, CardContent, Button, Skeleton,
 } from '@mui/material';
-import { People, Quiz, Category, Analytics, ArrowForward } from '@mui/icons-material';
+import { People, Quiz, Analytics, ArrowForward } from '@mui/icons-material';
 import { motion as m } from 'framer-motion';
 import { collection, getDocs, getCountFromServer } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
@@ -14,22 +14,20 @@ import { useRouter } from 'next/navigation';
 
 export default function AdminDashboard() {
   const router = useRouter();
-  const [stats, setStats] = useState({ users: 0, tests: 0, categories: 0, submissions: 0 });
+  const [stats, setStats] = useState({ users: 0, tests: 0, submissions: 0 });
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const load = async () => {
       try {
-        const [usersC, testsC, catsC, subsC] = await Promise.all([
+        const [usersC, testsC, subsC] = await Promise.all([
           getCountFromServer(collection(db, 'users')),
           getCountFromServer(collection(db, 'tests')),
-          getCountFromServer(collection(db, 'categories')),
           getCountFromServer(collection(db, 'submissions')),
         ]);
         setStats({
           users: usersC.data().count,
           tests: testsC.data().count,
-          categories: catsC.data().count,
           submissions: subsC.data().count,
         });
       } catch (err) {
@@ -43,7 +41,6 @@ export default function AdminDashboard() {
   const statCards = [
     { label: 'Total Users', value: stats.users, icon: <People />, color: '#6C63FF', path: '/admin/users' },
     { label: 'Total Tests', value: stats.tests, icon: <Quiz />, color: '#10B981', path: '/admin/analytics' },
-    { label: 'Categories', value: stats.categories, icon: <Category />, color: '#F59E0B', path: '/admin/categories' },
     { label: 'Submissions', value: stats.submissions, icon: <Analytics />, color: '#FF6584', path: '/admin/analytics' },
   ];
 
@@ -92,7 +89,6 @@ export default function AdminDashboard() {
             <Grid container spacing={3}>
               {[
                 { label: 'Manage Users', desc: 'View and manage user accounts', icon: <People />, path: '/admin/users' },
-                { label: 'Manage Categories', desc: 'Add, edit, or remove categories and topics', icon: <Category />, path: '/admin/categories' },
                 { label: 'Platform Analytics', desc: 'View platform-wide performance metrics', icon: <Analytics />, path: '/admin/analytics' },
               ].map((a, i) => (
                 <Grid size={{ xs: 12, md: 4 }} key={i}>

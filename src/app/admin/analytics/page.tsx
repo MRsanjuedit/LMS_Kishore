@@ -28,17 +28,16 @@ const COLORS = ['#6C63FF', '#FF6584', '#10B981', '#F59E0B', '#3B82F6'];
 export default function AdminAnalyticsPage() {
   const [loading, setLoading] = useState(true);
   const [userRoles, setUserRoles] = useState<Array<{ name: string; value: number }>>([]);
-  const [categoryStats, setCategoryStats] = useState<Array<{ name: string; tests: number; submissions: number }>>([]);
+
   const [stats, setStats] = useState({ users: 0, tests: 0, submissions: 0, avgScore: 0 });
 
   useEffect(() => {
     const load = async () => {
       try {
-        const [usersCountSnap, testsCountSnap, submissionsCountSnap, catsSnap, recentSubsSnap, studentCountSnap, instructorCountSnap, adminCountSnap] = await Promise.all([
+        const [usersCountSnap, testsCountSnap, submissionsCountSnap, recentSubsSnap, studentCountSnap, instructorCountSnap, adminCountSnap] = await Promise.all([
           getCountFromServer(collection(db, 'users')),
           getCountFromServer(collection(db, 'tests')),
           getCountFromServer(collection(db, 'submissions')),
-          getDocs(collection(db, 'categories')),
           getDocs(query(collection(db, 'submissions'), orderBy('createdAt', 'desc'), limit(500))),
           getCountFromServer(query(collection(db, 'users'), where('role', '==', 'student'))),
           getCountFromServer(query(collection(db, 'users'), where('role', '==', 'instructor'))),
@@ -57,19 +56,7 @@ export default function AdminAnalyticsPage() {
           totalAccuracy += d.data().accuracy || 0;
         });
 
-        // Tests per category
-        const catMap: Record<string, string> = {};
-        catsSnap.forEach(d => { catMap[d.id] = d.data().name; });
 
-        const categoryCounts = await Promise.all(
-          Object.entries(catMap).map(async ([catId, name]) => {
-            const countSnap = await getCountFromServer(
-              query(collection(db, 'tests'), where('categoryId', '==', catId))
-            );
-            return { name, tests: countSnap.data().count, submissions: 0 };
-          })
-        );
-        setCategoryStats(categoryCounts.filter(c => c.tests > 0));
 
         setStats({
           users: usersCountSnap.data().count,
@@ -119,27 +106,8 @@ export default function AdminAnalyticsPage() {
           <Skeleton variant="rounded" height={350} />
         ) : (
           <Grid container spacing={3}>
-            <Grid size={{ xs: 12, md: 8 }}>
-              <Card>
-                <CardContent>
-                  <Typography variant="h6" sx={{ mb: 2 }}>Tests by Category</Typography>
-                  {categoryStats.length > 0 ? (
-                    <ResponsiveContainer width="100%" height={300}>
-                      <BarChart data={categoryStats}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                        <XAxis dataKey="name" fontSize={12} />
-                        <YAxis fontSize={12} />
-                        <Tooltip />
-                        <Bar dataKey="tests" fill="#6C63FF" radius={[6, 6, 0, 0]} name="Tests" />
-                      </BarChart>
-                    </ResponsiveContainer>
-                  ) : (
-                    <Typography color="text.secondary" textAlign="center" py={4}>No data yet</Typography>
-                  )}
-                </CardContent>
-              </Card>
-            </Grid>
-            <Grid size={{ xs: 12, md: 4 }}>
+
+            <Grid size={{ xs: 12 }}>
               <Card sx={{ height: '100%' }}>
                 <CardContent>
                   <Typography variant="h6" sx={{ mb: 2 }}>User Distribution</Typography>

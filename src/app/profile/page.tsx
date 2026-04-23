@@ -12,9 +12,13 @@ import {
   Skeleton,
   TextField,
   Typography,
+  Select,
+  MenuItem,
+  FormControl,
+  InputLabel,
 } from '@mui/material';
 import { Edit, Save } from '@mui/icons-material';
-import { doc, getDoc, serverTimestamp, updateDoc } from 'firebase/firestore';
+import { doc, getDoc, serverTimestamp, updateDoc, collection, getDocs } from 'firebase/firestore';
 import { updateProfile } from 'firebase/auth';
 import toast from 'react-hot-toast';
 import DashboardLayout from '@/components/DashboardLayout';
@@ -35,8 +39,9 @@ export default function ProfilePage() {
   const [name, setName] = useState('');
   const [bio, setBio] = useState('');
   const [phone, setPhone] = useState('');
-  const [institution, setInstitution] = useState('');
+  const [college, setCollege] = useState('');
   const [settings, setSettings] = useState<UserSettings>({});
+  const [collegesList, setCollegesList] = useState<string[]>([]);
 
   useEffect(() => {
     if (!user) return;
@@ -49,17 +54,24 @@ export default function ProfilePage() {
             name?: string;
             bio?: string;
             phone?: string;
-            institution?: string;
+            college?: string;
             settings?: UserSettings;
           };
           setName(data.name || profile?.name || user.displayName || '');
           setBio(data.bio || '');
           setPhone(data.phone || '');
-          setInstitution(data.institution || '');
+          setCollege(data.college || profile?.college || '');
           setSettings(data.settings || {});
         } else {
           setName(profile?.name || user.displayName || '');
+          setCollege(profile?.college || '');
         }
+
+        // Fetch colleges
+        const cSnap = await getDocs(collection(db, 'colleges'));
+        const list: string[] = [];
+        cSnap.forEach(d => { if (d.data().name) list.push(d.data().name); });
+        setCollegesList(list.length > 0 ? list : ['Other']);
       } catch (error) {
         console.error('Failed to load profile:', error);
         toast.error('Failed to load profile');
@@ -87,7 +99,7 @@ export default function ProfilePage() {
         name: trimmedName,
         bio: bio.trim(),
         phone: phone.trim(),
-        institution: institution.trim(),
+        college,
         settings,
         updatedAt: serverTimestamp(),
       });
@@ -194,13 +206,19 @@ export default function ProfilePage() {
                       />
                     </Grid>
                     <Grid size={{ xs: 12, sm: 6 }}>
-                      <TextField
-                        fullWidth
-                        label="Institution"
-                        value={institution}
-                        onChange={(e) => setInstitution(e.target.value)}
-                        disabled={loading || saving}
-                      />
+                      <FormControl fullWidth>
+                        <InputLabel>College</InputLabel>
+                        <Select
+                          value={college}
+                          label="College"
+                          onChange={(e) => setCollege(e.target.value as string)}
+                          disabled={loading || saving}
+                        >
+                          {collegesList.map(c => (
+                            <MenuItem key={c} value={c}>{c}</MenuItem>
+                          ))}
+                        </Select>
+                      </FormControl>
                     </Grid>
                     <Grid size={{ xs: 12 }}>
                       <TextField

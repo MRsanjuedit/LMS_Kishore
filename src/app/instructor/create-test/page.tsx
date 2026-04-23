@@ -9,7 +9,7 @@ import {
   RadioGroup, FormControlLabel, Radio, Autocomplete,
   Dialog, DialogTitle, DialogContent, DialogActions,
   Tabs, Tab, Accordion, AccordionSummary, AccordionDetails,
-  Paper,
+  Paper, Checkbox, FormGroup
 } from '@mui/material';
 import { Add, Delete, Save, ArrowBack, ArrowForward, Visibility, ContentPaste, ExpandMore, CheckCircle } from '@mui/icons-material';
 import { motion as m } from 'framer-motion';
@@ -23,8 +23,7 @@ import DashboardLayout from '@/components/DashboardLayout';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import toast from 'react-hot-toast';
 
-const CATEGORY_CACHE_TTL = 10 * 60 * 1000;
-const TOPIC_CACHE_TTL = 10 * 60 * 1000;
+
 
 interface QuestionInput {
   questionText: string;
@@ -33,17 +32,6 @@ interface QuestionInput {
   correctAnswer: string;
   difficulty: 'Easy' | 'Medium' | 'Hard';
   explanation: string;
-}
-
-interface CategoryItem {
-  id: string;
-  name: string;
-}
-
-interface TopicItem {
-  id: string;
-  categoryId: string;
-  name: string;
 }
 
 type TestStatus = 'draft' | 'published';
@@ -57,15 +45,13 @@ const emptyQuestion: QuestionInput = {
   explanation: '',
 };
 
-const steps = ['Test Details', 'Add Questions', 'Review & Submit'];
+const steps = ['Test Details', 'Add Questions', 'Select Target Colleges', 'Set Schedule', 'Config Preview', 'Publish Test'];
 
 // ---------------------------------------------------------------------------
 // MDX-style format guide (shown as placeholder / example)
 // ---------------------------------------------------------------------------
 const MDX_FORMAT_GUIDE = `---
 title: My Test Title
-category: Mathematics
-topic: Algebra
 duration: 30
 description: Optional description here
 ---
@@ -93,18 +79,16 @@ explanation: Water is dihydrogen monoxide.`;
 // MDX Parser — converts pasted text into test state
 // ---------------------------------------------------------------------------
 function parseMDX(text: string): {
-  title: string; category: string; topic: string;
+  title: string;
   duration: number; description: string; questions: QuestionInput[];
 } | { error: string } {
   try {
     // --- frontmatter ---
     const fmMatch = text.match(/^---\r?\n([\s\S]*?)\r?\n---/);
-    let title = '', category = '', topic = '', duration = 30, description = '';
+    let title = '', duration = 30, description = '';
     if (fmMatch) {
       const fm = fmMatch[1];
       title       = fm.match(/title:\s*(.+)/)?.[1]?.trim() ?? '';
-      category    = fm.match(/category:\s*(.+)/)?.[1]?.trim() ?? '';
-      topic       = fm.match(/topic:\s*(.+)/)?.[1]?.trim() ?? '';
       duration    = parseInt(fm.match(/duration:\s*(\d+)/)?.[1] ?? '30', 10);
       description = fm.match(/description:\s*(.+)/)?.[1]?.trim() ?? '';
     }
@@ -160,7 +144,7 @@ function parseMDX(text: string): {
     }
 
     if (questions.length === 0) return { error: 'No valid questions parsed.' };
-    return { title, category, topic, duration, description, questions };
+    return { title, duration, description, questions };
   } catch {
     return { error: 'Failed to parse. Please check the syntax and try again.' };
   }
@@ -170,8 +154,6 @@ export default function CreateTestPage() {
   const { user } = useAuth();
   const router = useRouter();
   const [activeStep, setActiveStep] = useState(0);
-  const [categories, setCategories] = useState<CategoryItem[]>([]);
-  const [topics, setTopics] = useState<TopicItem[]>([]);
   const [saving, setSaving] = useState(false);
 
   // Quick-Paste mode
@@ -184,40 +166,37 @@ export default function CreateTestPage() {
 
   // Test details
   const [title, setTitle] = useState('');
-  const [categoryId, setCategoryId] = useState('');
-  const [categoryName, setCategoryName] = useState('');
-  const [topicId, setTopicId] = useState('');
-  const [topicName, setTopicName] = useState('');
   const [duration, setDuration] = useState(30);
   const [description, setDescription] = useState('');
-  const [status, setStatus] = useState<TestStatus>('published');
+  const [targetColleges, setTargetColleges] = useState<string[]>([]);
+  const [newCollegeValue, setNewCollegeValue] = useState('');
+  const [startTime, setStartTime] = useState('');
+  const [endTime, setEndTime] = useState('');
+  const [collegesList, setCollegesList] = useState<string[]>([]);
 
   // Questions
   const [questions, setQuestions] = useState<QuestionInput[]>([{ ...emptyQuestion }]);
 
   useEffect(() => {
     const load = async () => {
-      const [cats, tops] = await Promise.all([
-        getCachedOrFetch('categories_all', CATEGORY_CACHE_TTL, async () => {
-          const catsSnap = await getDocs(collection(db, 'categories'));
-          const categoryList: CategoryItem[] = [];
-          catsSnap.forEach(d => categoryList.push({ id: d.id, ...d.data() } as CategoryItem));
-          return categoryList;
-        }),
-        getCachedOrFetch('topics_all', TOPIC_CACHE_TTL, async () => {
-          const topicsSnap = await getDocs(collection(db, 'topics'));
-          const topicList: TopicItem[] = [];
-          topicsSnap.forEach(d => topicList.push({ id: d.id, ...d.data() } as TopicItem));
-          return topicList;
-        }),
-      ]);
-      setCategories(cats);
-      setTopics(tops);
+      try {
+        const [cols] = await Promise.all([
+          getCachedOrFetch('colleges_all', 10 * 60 * 1000, async () => {
+            const snap = await getDocs(collection(db, 'colleges'));
+            const list: string[] = [];
+            snap.forEach(d => { if (d.data().name) list.push(d.data().name); });
+            return list;
+          }),
+        ]);
+        setCollegesList(cols.length > 0 ? cols : ['Other']);
+      } catch (err) {
+        console.error('Error loading config from Firebase (check permissions):', err);
+        setCollegesList(['Other']);
+      }
     };
     load();
   }, []);
 
-  const filteredTopics = topics.filter(t => t.categoryId === categoryId);
 
   const updateQuestion = (index: number, field: keyof QuestionInput, value: string | string[]) => {
     setQuestions(prev => {
@@ -256,12 +235,6 @@ export default function CreateTestPage() {
       return;
     }
     setTitle(result.title);
-    setCategoryName(result.category);
-    const matchCat = categories.find(c => c.name.toLowerCase() === result.category.toLowerCase());
-    setCategoryId(matchCat?.id || '');
-    setTopicName(result.topic);
-    const matchTop = topics.find(t => t.name.toLowerCase() === result.topic.toLowerCase());
-    setTopicId(matchTop?.id || '');
     setDuration(result.duration);
     setDescription(result.description);
     setQuestions(result.questions);
@@ -271,7 +244,7 @@ export default function CreateTestPage() {
   };
 
   const validateForPublish = (): boolean => {
-    if (!title.trim() || (!categoryId && !categoryName.trim()) || !duration || duration < 1) {
+    if (!title.trim() || !duration || duration < 1) {
       toast.error('Please complete test details before publishing');
       return false;
     }
@@ -323,17 +296,13 @@ export default function CreateTestPage() {
 
     setSaving(true);
     try {
-      const catName = categoryName || categories.find(c => c.id === categoryId)?.name || '';
-      const topName = topicName || topics.find(t => t.id === topicId)?.name || '';
-
       const testRef = await addDoc(collection(db, 'tests'), {
         title,
-        categoryId,
-        categoryName: catName,
-        topicId,
-        topicName: topName,
         duration,
         description,
+        targetColleges,
+        startTime: startTime || null,
+        endTime: endTime || null,
         questionCount: questions.length,
         status: submitStatus,
         createdBy: user?.uid,
@@ -455,8 +424,6 @@ export default function CreateTestPage() {
                           <Box component="pre" sx={{ fontFamily: 'monospace', fontSize: 12, m: 0, whiteSpace: 'pre-wrap' }}>
 {`---
 title: My Test Title
-category: Mathematics
-topic: Algebra
 duration: 30
 description: A short description
 ---`}
@@ -526,47 +493,12 @@ difficulty: Medium`}
                         <Grid size={{ xs: 12 }}>
                           <TextField fullWidth label="Test Title" value={title} onChange={e => setTitle(e.target.value)} required />
                         </Grid>
-                        <Grid size={{ xs: 12, sm: 6 }}>
-                          <Autocomplete
-                            freeSolo
-                            options={categories.map(c => c.name)}
-                            value={categoryName}
-                            onInputChange={(_, val) => {
-                              setCategoryName(val);
-                              const match = categories.find(c => c.name === val);
-                              setCategoryId(match?.id || '');
-                              setTopicName('');
-                              setTopicId('');
-                            }}
-                            renderInput={(params) => <TextField {...params} label="Category" placeholder="Type or select a category" />}
-                          />
-                        </Grid>
-                        <Grid size={{ xs: 12, sm: 6 }}>
-                          <Autocomplete
-                            freeSolo
-                            options={categoryId ? filteredTopics.map(t => t.name) : topics.map(t => t.name)}
-                            value={topicName}
-                            onInputChange={(_, val) => {
-                              setTopicName(val);
-                              const match = topics.find(t => t.name === val);
-                              setTopicId(match?.id || '');
-                            }}
-                            renderInput={(params) => <TextField {...params} label="Topic" placeholder="Type or select a topic" />}
-                          />
-                        </Grid>
+
                         <Grid size={{ xs: 12, sm: 6 }}>
                           <TextField fullWidth type="number" label="Duration (minutes)" value={duration}
                             onChange={e => setDuration(Number(e.target.value))} inputProps={{ min: 1 }} />
                         </Grid>
-                        <Grid size={{ xs: 12, sm: 6 }}>
-                          <FormControl fullWidth>
-                            <InputLabel>Status</InputLabel>
-                            <Select value={status} label="Status" onChange={e => setStatus(e.target.value as TestStatus)}>
-                              <MenuItem value="published">Published (Visible to students)</MenuItem>
-                              <MenuItem value="draft">Draft (Instructor only)</MenuItem>
-                            </Select>
-                          </FormControl>
-                        </Grid>
+
                         <Grid size={{ xs: 12 }}>
                           <TextField fullWidth multiline rows={3} label="Description (optional)" value={description}
                             onChange={e => setDescription(e.target.value)} />
@@ -672,34 +604,171 @@ difficulty: Medium`}
                   </Box>
                 )}
 
-                {/* Step 3: Review */}
+                {/* Step 3: Target Colleges */}
                 {activeStep === 2 && (
                   <Card>
                     <CardContent sx={{ p: 3 }}>
-                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-                        <Typography variant="h6">Review Test</Typography>
-                        <Button variant="outlined" startIcon={<Visibility />} onClick={() => setPreviewOpen(true)}>
-                          Preview
+                      <Typography variant="h6" sx={{ mb: 2 }}>Target Colleges</Typography>
+                      <Typography color="text.secondary" sx={{ mb: 3 }}>
+                        Select the colleges that should have access to this test. You can publish globally by selecting 'All' or add a new college.
+                      </Typography>
+                      
+                      <FormGroup sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 1 }}>
+                        <FormControlLabel
+                          control={<Checkbox checked={targetColleges.includes('All')} onChange={e => {
+                            if (e.target.checked) setTargetColleges(['All']);
+                            else setTargetColleges([]);
+                          }} />}
+                          label="All Colleges (Global)"
+                        />
+                        {collegesList.map(c => (
+                          <FormControlLabel
+                            key={c}
+                            control={<Checkbox checked={targetColleges.includes(c)} onChange={e => {
+                              if (e.target.checked) setTargetColleges(prev => prev.includes('All') ? [c] : [...prev, c]);
+                              else setTargetColleges(prev => prev.filter(p => p !== c));
+                            }} />}
+                            label={c}
+                          />
+                        ))}
+                      </FormGroup>
+
+                      <Divider sx={{ my: 3 }} />
+                      <Typography variant="subtitle2" sx={{ mb: 1 }}>Add New College</Typography>
+                      <Box sx={{ display: 'flex', gap: 2 }}>
+                        <TextField 
+                          size="small" 
+                          placeholder="College Name" 
+                          value={newCollegeValue} 
+                          onChange={(e) => setNewCollegeValue(e.target.value)}
+                        />
+                        <Button 
+                          variant="outlined" 
+                          onClick={async () => {
+                            if (!newCollegeValue.trim()) return;
+                            try {
+                              const name = newCollegeValue.trim();
+                              await addDoc(collection(db, 'colleges'), { name, createdAt: serverTimestamp(), createdBy: user?.uid });
+                              setCollegesList(p => [...p, name]);
+                              setTargetColleges(p => p.includes('All') ? [name] : [...p, name]);
+                              setNewCollegeValue('');
+                              toast.success('College added');
+                            } catch (error) {
+                              toast.error('Failed to add college');
+                            }
+                          }}
+                        >
+                          Add
                         </Button>
                       </Box>
-                      <Grid container spacing={2} sx={{ mb: 2 }}>
-                        <Grid size={{ xs: 6 }}><Typography color="text.secondary">Title:</Typography><Typography fontWeight={600}>{title}</Typography></Grid>
-                        <Grid size={{ xs: 6 }}><Typography color="text.secondary">Duration:</Typography><Typography fontWeight={600}>{duration} min</Typography></Grid>
-                        <Grid size={{ xs: 6 }}><Typography color="text.secondary">Category:</Typography><Typography fontWeight={600}>{categoryName || '-'}</Typography></Grid>
-                        <Grid size={{ xs: 6 }}><Typography color="text.secondary">Questions:</Typography><Typography fontWeight={600}>{questions.length}</Typography></Grid>
-                        <Grid size={{ xs: 6 }}><Typography color="text.secondary">Status:</Typography><Typography fontWeight={600}>{status === 'published' ? 'Published' : 'Draft'}</Typography></Grid>
+                    </CardContent>
+                  </Card>
+                )}
+
+                {/* Step 4: Schedule */}
+                {activeStep === 3 && (
+                  <Card>
+                    <CardContent sx={{ p: 3 }}>
+                      <Typography variant="h6" sx={{ mb: 2 }}>Schedule (IST)</Typography>
+                      <Typography color="text.secondary" sx={{ mb: 3 }}>
+                        Set the available time window for this test. Leave blank if it should be immediately and permanently available.
+                      </Typography>
+                      <Grid container spacing={3}>
+                        <Grid size={{ xs: 12, sm: 6 }}>
+                          <TextField
+                            fullWidth
+                            type="datetime-local"
+                            label="Start Time"
+                            InputLabelProps={{ shrink: true }}
+                            value={startTime}
+                            onChange={(e) => setStartTime(e.target.value)}
+                          />
+                        </Grid>
+                        <Grid size={{ xs: 12, sm: 6 }}>
+                          <TextField
+                            fullWidth
+                            type="datetime-local"
+                            label="End Time"
+                            InputLabelProps={{ shrink: true }}
+                            value={endTime}
+                            onChange={(e) => setEndTime(e.target.value)}
+                          />
+                        </Grid>
                       </Grid>
+                    </CardContent>
+                  </Card>
+                )}
+
+                {/* Step 5: Config Preview */}
+                {activeStep === 4 && (
+                  <Card>
+                    <CardContent sx={{ p: 3 }}>
+                      <Typography variant="h6" sx={{ mb: 2 }}>Configuration Preview</Typography>
+                      <Grid container spacing={2} sx={{ mb: 2 }}>
+                        <Grid size={{ xs: 6 }}><Typography color="text.secondary">Title:</Typography><Typography fontWeight={600}>{title || '-'}</Typography></Grid>
+                        <Grid size={{ xs: 6 }}><Typography color="text.secondary">Duration:</Typography><Typography fontWeight={600}>{duration} min</Typography></Grid>
+                        <Grid size={{ xs: 6 }}><Typography color="text.secondary">Questions:</Typography><Typography fontWeight={600}>{questions.length}</Typography></Grid>
+                        <Grid size={{ xs: 12 }}>
+                          <Typography color="text.secondary">Target Colleges:</Typography>
+                          <Typography fontWeight={600}>
+                            {targetColleges.length === 0 ? 'None selected!' : targetColleges.join(', ')}
+                          </Typography>
+                        </Grid>
+                        <Grid size={{ xs: 12 }}>
+                          <Typography color="text.secondary">Schedule:</Typography>
+                          <Typography fontWeight={600}>
+                            {startTime ? new Date(startTime).toLocaleString() : 'Now'} — {endTime ? new Date(endTime).toLocaleString() : 'Forever'}
+                          </Typography>
+                        </Grid>
+                      </Grid>
+                    </CardContent>
+                  </Card>
+                )}
+
+                {/* Step 6: Review Format & Submit */}
+                {activeStep === 5 && (
+                  <Card>
+                    <CardContent sx={{ p: 3 }}>
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                        <Typography variant="h6">Test Format Preview</Typography>
+                        <Button variant="outlined" startIcon={<Visibility />} onClick={() => setPreviewOpen(true)}>
+                          Fullscreen Preview
+                        </Button>
+                      </Box>
                       <Divider sx={{ my: 2 }} />
-                      {questions.map((q, i) => (
-                        <Box key={i} sx={{ mb: 1.5 }}>
-                          <Typography fontWeight={600}>Q{i + 1}. {q.questionText}</Typography>
-                          <Box sx={{ display: 'flex', gap: 1, mt: 0.5 }}>
-                            <Chip label={q.type} size="small" />
-                            <Chip label={q.difficulty} size="small" color={q.difficulty === 'Easy' ? 'success' : q.difficulty === 'Hard' ? 'error' : 'warning'} />
-                            <Chip label={`Answer: ${q.correctAnswer}`} size="small" variant="outlined" />
+                      <Box sx={{ p: 2, bgcolor: '#f4f6f8', borderRadius: 2 }}>
+                        <Typography variant="h6" sx={{ mb: 1 }}>{title || 'Untitled Test'}</Typography>
+                        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                          {questions.length} questions • {duration} min
+                        </Typography>
+                        
+                        {questions.slice(0, 2).map((q, i) => (
+                          <Box key={i} sx={{ mb: 2, p: 2, bgcolor: '#fff', borderRadius: 1, border: '1px solid #e0e0e0' }}>
+                            <Typography fontWeight={600} sx={{ mb: 1 }}>{i + 1}. {q.questionText}</Typography>
+                            {q.type === 'mcq' && (
+                              <FormGroup>
+                                {q.options.map((opt, oi) => (
+                                  <FormControlLabel key={oi} control={<Radio disabled />} label={opt} />
+                                ))}
+                              </FormGroup>
+                            )}
+                            {q.type === 'true_false' && (
+                              <FormGroup>
+                                <FormControlLabel control={<Radio disabled />} label="True" />
+                                <FormControlLabel control={<Radio disabled />} label="False" />
+                              </FormGroup>
+                            )}
+                            {(q.type === 'short_answer' || q.type === 'paragraph') && (
+                              <TextField fullWidth disabled placeholder="Student will enter answer here" />
+                            )}
                           </Box>
-                        </Box>
-                      ))}
+                        ))}
+                        {questions.length > 2 && (
+                          <Typography textAlign="center" color="text.secondary" variant="body2">
+                            ... and {questions.length - 2} more questions
+                          </Typography>
+                        )}
+                      </Box>
                     </CardContent>
                   </Card>
                 )}
@@ -711,7 +780,7 @@ difficulty: Medium`}
                   onClick={() => setActiveStep(prev => prev - 1)}>
                   Back
                 </Button>
-                {activeStep < 2 ? (
+                {activeStep < 5 ? (
                   <Button variant="contained" endIcon={<ArrowForward />}
                     onClick={() => setActiveStep(prev => prev + 1)}>
                     Next
@@ -741,7 +810,7 @@ difficulty: Medium`}
               <Box>
                 <Typography variant="h6">{title || 'Untitled Test'}</Typography>
                 <Typography variant="body2" color="text.secondary">
-                  {categoryName}{topicName ? ` — ${topicName}` : ''} &bull; {duration} min &bull; {questions.length} question{questions.length !== 1 ? 's' : ''}
+                  {duration} min &bull; {questions.length} question{questions.length !== 1 ? 's' : ''}
                 </Typography>
               </Box>
               <Chip label="Student View" color="primary" size="small" sx={{ mt: 0.5 }} />
