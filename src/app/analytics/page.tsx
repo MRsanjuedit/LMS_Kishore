@@ -48,7 +48,6 @@ export default function AnalyticsPage() {
         const submissions: Array<{
           testId: string; testTitle: string; score: number; total: number;
           accuracy: number; timeTaken: number; createdAt: Date;
-          accuracy: number; timeTaken: number; createdAt: Date;
         }> = [];
 
         snap.forEach(d => {

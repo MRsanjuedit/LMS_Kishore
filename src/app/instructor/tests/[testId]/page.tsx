@@ -56,7 +56,7 @@ export default function InstructorTestDetailPage() {
         // 1. Test document
         const testDoc = await getDoc(doc(db, 'tests', testId as string));
         if (!testDoc.exists()) { setLoading(false); return; }
-        const testData = { id: testDoc.id, ...testDoc.data() };
+        const testData = { id: testDoc.id, ...testDoc.data() } as Record<string, unknown>;
         setTest(testData);
 
         const tc: string[] = (testData.targetColleges as string[]) || [];
